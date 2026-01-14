@@ -46,9 +46,17 @@ async function loadAcquisitionList() {
             return timeB - timeA;
         });
         
+        // Filter only completed acquisitions
+        const completed = sorted.filter(acq => acq.status === 'completed');
+        
+        if (completed.length === 0) {
+            elements.acquisitionList.innerHTML = '<p style="color: var(--muted);">No completed acquisitions available</p>';
+            return;
+        }
+        
         // Create card for each acquisition
         elements.acquisitionList.innerHTML = '';
-        sorted.forEach(acq => {
+        completed.forEach(acq => {
             const card = createAcquisitionCard(acq);
             elements.acquisitionList.appendChild(card);
         });
@@ -69,8 +77,9 @@ function createAcquisitionCard(acq) {
         padding: 16px;
         background: var(--panel-bg);
         display: flex;
-        flex-direction: column;
-        gap: 12px;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
     `;
     
     // Extract info
@@ -79,43 +88,26 @@ function createAcquisitionCard(acq) {
     const displayId = rawId.startsWith('acq_') ? `Acquisition: ${rawId.replace('acq_', '')}` : rawId;
     const patient = (acq.test_config && acq.test_config.patient) ? acq.test_config.patient : 'Unknown';
     const dateTime = formatDateTime(acq.start_time);
-    const samples = acq.samples || 0;
     
     // Info section
     const infoDiv = document.createElement('div');
-    infoDiv.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+    infoDiv.style.cssText = 'display: flex; flex-direction: column; gap: 4px; flex: 1;';
     infoDiv.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong style="font-size: 16px; color: var(--text);">${displayId}</strong>
-            <span style="font-size: 12px; color: var(--muted); background: var(--bg); padding: 4px 8px; border-radius: 6px;">
-                ${acq.status || 'completed'}
-            </span>
-        </div>
+        <strong style="font-size: 16px; color: var(--text);">${displayId}</strong>
         <div style="font-size: 14px; color: var(--muted);">
-            <strong>Patient:</strong> ${patient}
-        </div>
-        <div style="font-size: 14px; color: var(--muted);">
-            <strong>Date:</strong> ${dateTime}
-        </div>
-        <div style="font-size: 14px; color: var(--muted);">
-            <strong>Samples:</strong> ${samples}
+            <strong style="color: var(--text);">${patient}</strong> - ${dateTime}
         </div>
     `;
     
-    // Buttons section
-    const buttonsDiv = document.createElement('div');
-    buttonsDiv.style.cssText = 'display: flex; gap: 8px; margin-top: 4px;';
-    
+    // Download button
     const downloadBtn = document.createElement('button');
-    downloadBtn.textContent = '⬇ Download CSV Files';
+    downloadBtn.textContent = '⬇ Download';
     downloadBtn.className = 'btn';
-    downloadBtn.style.cssText = 'flex: 1; margin: 0; font-size: 14px; padding: 10px;';
+    downloadBtn.style.cssText = 'margin: 0; font-size: 14px; padding: 8px 16px; white-space: nowrap;';
     downloadBtn.onclick = () => downloadAllCSV(rawId);
     
-    buttonsDiv.appendChild(downloadBtn);
-    
     card.appendChild(infoDiv);
-    card.appendChild(buttonsDiv);
+    card.appendChild(downloadBtn);
     
     return card;
 }

@@ -571,6 +571,9 @@ async def download_force_csv(acquisition_id: str):
             has_ts_left = '/loadcell/ts_left' in f
             has_ts_right = '/loadcell/ts_right' in f
             
+            if not has_left and not has_right:
+                raise HTTPException(status_code=400, detail="No loadcell data found in HDF5 file")
+            
             left_data = []
             right_data = []
             ts_left_ms = []
@@ -583,6 +586,12 @@ async def download_force_csv(acquisition_id: str):
             if has_right and has_ts_right:
                 right_data = f['/loadcell/right'][:].tolist()
                 ts_right_ms = f['/loadcell/ts_right'][:].tolist()  # milliseconds epoch
+            
+            # Check if we have any data
+            if not left_data and not right_data:
+                raise HTTPException(status_code=400, detail="HDF5 file contains no force data")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read HDF5 file: {str(e)}")
     
@@ -667,7 +676,12 @@ async def download_info_csv(acquisition_id: str):
         writer.writerow(['Comments'])
         writer.writerow(['Timestamp', 'Comment'])
         for comment in comments:
-            writer.writerow([comment.get('timestamp', ''), comment.get('text', '')])
+            # Handle both dict format and old string format
+            if isinstance(comment, dict):
+                writer.writerow([comment.get('timestamp', ''), comment.get('text', '')])
+            else:
+                # Legacy string format: "[timestamp] text"
+                writer.writerow(['', str(comment)])
         writer.writerow([])
     
     # Conditions
