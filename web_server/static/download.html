@@ -9,10 +9,13 @@
 <body>
     <div class="panel">
         <h1>Instrumented Crutches</h1>
-        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-            <a href="/static/control.html" class="link">← Record</a>
-            <a href="/static/visualization.html" class="link">View Data</a>
-        </div>
+        <nav class="navbar">
+            <a href="/static/control.html" class="nav-link">Record</a>
+            <div class="nav-separator"></div>
+            <a href="/static/visualization.html" class="nav-link">View Data</a>
+            <div class="nav-separator"></div>
+            <a href="/static/download.html" class="nav-link active">Download</a>
+        </nav>
         
         <div class="section">
             <h2>Download Data</h2>
@@ -32,8 +35,13 @@
                 <!-- Dynamically populated -->
             </div>
         </div>
+
+        <div class="logo-panel">
+            <img src="/static/mmtlab.png" alt="MMTLab">
+        </div>
     </div>
 
+    <script src="/static/navbar.js"></script>
     <script src="/static/download.js"></script>
     
     <footer class="page-footer">

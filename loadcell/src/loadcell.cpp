@@ -89,7 +89,7 @@ public:
       _offset = _debug_offset;
       _setting_offset = false;
       std::cout << "Loadcell: Offset set to " << _offset << std::endl;
-
+      
     } else {
       return return_type::retry;
     }

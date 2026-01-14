@@ -10,10 +10,13 @@
 <body>
     <div class="panel">
         <h1>Instrumented Crutches</h1>
-        <div style="display: flex; gap: 12px; margin-bottom: 8px;">
-            <a href="/static/control.html" class="link">← Record</a>
-            <a href="/static/download.html" class="link">Download</a>
-        </div>
+        <nav class="navbar">
+            <a href="/static/control.html" class="nav-link">Record</a>
+            <div class="nav-separator"></div>
+            <a href="/static/visualization.html" class="nav-link active">View Data</a>
+            <div class="nav-separator"></div>
+            <a href="/static/download.html" class="nav-link">Download</a>
+        </nav>
         
         <div class="section">
             <select id="acquisition-select" class="select">
@@ -41,8 +44,13 @@
                 <canvas id="pwb-chart"></canvas>
             </div>
         </div>
+
+        <div class="logo-panel">
+            <img src="/static/mmtlab.png" alt="MMTLab">
+        </div>
     </div>
 
+    <script src="/static/navbar.js"></script>
     <script src="/static/visualization.js"></script>
     
     <footer class="page-footer">

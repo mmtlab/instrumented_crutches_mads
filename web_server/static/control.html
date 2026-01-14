@@ -9,10 +9,13 @@
 <body>
     <div class="panel">
         <h1>Instrumented Crutches</h1>
-        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-            <a href="/static/visualization.html" class="link">View Data</a>
-            <a href="/static/download.html" class="link">Download</a>
-        </div>
+        <nav class="navbar">
+            <a href="/static/control.html" class="nav-link active">Record</a>
+            <div class="nav-separator"></div>
+            <a href="/static/visualization.html" class="nav-link">View Data</a>
+            <div class="nav-separator"></div>
+            <a href="/static/download.html" class="nav-link">Download</a>
+        </nav>
         
         <div class="section">
             <div class="section-header">
@@ -42,15 +45,27 @@
         <div class="section">
             <h2>Acquisition</h2>
             <div class="status">
-                <div><strong>Current:</strong> <span id="status" class="status-ready">Ready</span></div>
-                <div><strong>Recording:</strong> <span id="acquisition-id">None</span></div>
-                <div><strong>Duration:</strong> <span id="timer">00:00</span></div>
-                <div><strong>Condition:</strong> <span id="current-condition">-</span></div>
+                <div>
+                    <strong>Status</strong>
+                    <span id="status" class="status-ready">Ready</span>
+                </div>
+                <div>
+                    <strong>Recording ID</strong>
+                    <span id="acquisition-id">None</span>
+                </div>
+                <div>
+                    <strong>Duration</strong>
+                    <span id="timer">00:00</span>
+                </div>
+                <div>
+                    <strong>Condition</strong>
+                    <span id="current-condition">-</span>
+                </div>
             </div>
-            <div style="margin-top: 12px;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
                 <button id="start-btn" class="btn btn-start">Start</button>
                 <button id="stop-btn" class="btn btn-stop" disabled>Stop</button>
-                <button id="condition-btn" class="btn" style="margin-left: 8px;">Condition</button>
+                <button id="condition-btn" class="btn">Condition</button>
             </div>
             <div id="feedback" class="feedback"></div>
         </div>
@@ -74,6 +89,10 @@
                 <div id="comment-feedback" class="feedback"></div>
             </div>
         </div>
+
+        <div class="logo-panel">
+            <img src="/static/mmtlab.png" alt="MMTLab">
+        </div>
     </div>
 
     <!-- Conditions Modal -->
@@ -85,6 +104,7 @@
         </div>
     </div>
 
+    <script src="/static/navbar.js"></script>
     <script src="/static/control.js"></script>
     
     <footer class="page-footer">

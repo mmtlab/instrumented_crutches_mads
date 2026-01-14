@@ -72,6 +72,9 @@ public:
       } else if (_command_to_send == "stop") {
         _acquiring = false;
       }
+      else if (_command_to_send == "set_offset") {
+        //_error = "set_offset command not implemented in ControllerPlugin";
+      }
       // do nothing special for set_offset
 
       _send_command = false; // reset the flag
