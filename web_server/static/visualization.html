@@ -20,8 +20,23 @@
         </div>
 
         <div class="section">
-            <h2>Force (Loadcell)</h2>
-            <canvas id="force-chart"></canvas>
+            <div class="section-header">
+                <h2>Force</h2>
+                <button id="toggle-chart-btn" class="toggle-btn" title="Collapse/Expand">−</button>
+            </div>
+            <div id="chart-content" class="section-content">
+                <canvas id="force-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Partial Weight Bearing (PWB)</h2>
+                <button id="toggle-pwb-btn" class="toggle-btn collapsed" title="Collapse/Expand">+</button>
+            </div>
+            <div id="pwb-content" class="section-content collapsed">
+                <canvas id="pwb-chart"></canvas>
+            </div>
         </div>
     </div>
 

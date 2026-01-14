@@ -79,9 +79,11 @@ public:
 
       float test = 0.0;
       if (_params["side"] == "right") // Simulate different readings for left and right
-        test = 200.0;
+        test = 140.0;
+      else
+        test = 40.0;
       
-      out[_params["side"]] = test + _debug_offset + (rand() % 100 - 50) - _offset; // Dummy data 
+      out[_params["side"]] = test + _debug_offset + (rand() % 6 - 3) - _offset; // Dummy data 
 
     } else if (_setting_offset && _acquiring == false) {
       _offset = _debug_offset;

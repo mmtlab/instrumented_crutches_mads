@@ -105,8 +105,9 @@ h1 {
 .section-content {
     overflow: hidden;
     transition: max-height 0.3s ease, opacity 0.3s ease;
-    max-height: 500px;
+    max-height: 1200px;
     opacity: 1;
+    margin-top: 16px;
 }
 
 .section-content.collapsed {
@@ -305,7 +306,7 @@ textarea.input {
 /* Charts */
 canvas {
     max-width: 100%;
-    height: auto;
+    height: 400px !important;
 }
 
 /* Footer */
@@ -427,4 +428,70 @@ canvas {
 .condition-btn:active {
     transform: translateY(0);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    body {
+        padding: 12px;
+    }
+    
+    .panel {
+        gap: 12px;
+    }
+    
+    h1 {
+        font-size: 20px;
+    }
+    
+    .section {
+        padding: 12px 14px;
+    }
+    
+    canvas {
+        height: 250px !important;
+    }
+    
+    .btn {
+        padding: 10px 16px;
+        font-size: 14px;
+        margin-right: 6px;
+        margin-bottom: 8px;
+    }
+    
+    .status div {
+        font-size: 14px;
+    }
+    
+    .status strong {
+        width: 90px;
+        display: block;
+        margin-bottom: 4px;
+    }
+    
+    .modal-content {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        padding: 16px;
+    }
+    
+    .modal-content h1 {
+        font-size: 24px;
+        margin-bottom: 16px;
+    }
+    
+    .conditions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 12px;
+    }
+    
+    .condition-btn {
+        padding: 16px 12px;
+        font-size: 14px;
+    }
+    
+    .page-footer img {
+        height: 60px;
+    }
 }

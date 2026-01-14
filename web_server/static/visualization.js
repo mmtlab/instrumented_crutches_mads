@@ -9,14 +9,20 @@
     
     // Chart instances
     const charts = {
-        force: null
+        force: null,
+        pwb: null
     };
     
     // DOM elements
     const elements = {
         acquisitionSelect: document.getElementById('acquisition-select'),
         feedback: document.getElementById('feedback'),
-        forceCanvas: document.getElementById('force-chart')
+        forceCanvas: document.getElementById('force-chart'),
+        toggleChartBtn: document.getElementById('toggle-chart-btn'),
+        chartContent: document.getElementById('chart-content'),
+        pwbCanvas: document.getElementById('pwb-chart'),
+        togglePwbBtn: document.getElementById('toggle-pwb-btn'),
+        pwbContent: document.getElementById('pwb-content')
     };
     
     // Show feedback message
@@ -99,11 +105,21 @@
             const result = await response.json();
             const data = result.data;
             
+            // Determine if data is in % body weight or Newtons
+            const hasBodyWeight = result.body_weight_kg != null;
+            const yAxisLabel = hasBodyWeight ? 'Force (% Body Weight)' : 'Force (N)';
+            
             // Render chart with left and/or right force traces
-            renderForceChart(data.ts_left, data.left, data.ts_right, data.right);
+            renderForceChart(data.ts_left, data.left, data.ts_right, data.right, yAxisLabel, hasBodyWeight);
+            
+            // Render PWB chart if data is in % body weight
+            if (hasBodyWeight && data.ts_left && data.ts_right && data.left && data.right) {
+                renderPWBChart(data.ts_left, data.left, data.ts_right, data.right);
+            }
             
             const num = acquisitionId.replace('acq_', '');
-            showFeedback(`✓ Showing recording #${num} (${result.samples} samples)`, 'success');
+            const weightInfo = hasBodyWeight ? ` (${result.body_weight_kg} kg)` : '';
+            showFeedback(`✓ Showing recording #${num}${weightInfo} (${result.samples} samples)`, 'success');
         } catch (error) {
             console.error('Load data error:', error);
             showFeedback('Cannot load data. Try again.', 'error');
@@ -111,7 +127,7 @@
     }
 
     // Render force chart using Chart.js
-    function renderForceChart(tsLeft, leftData, tsRight, rightData) {
+    function renderForceChart(tsLeft, leftData, tsRight, rightData, yAxisLabel, hasBodyWeight) {
         // Destroy existing chart if any
         if (charts.force) {
             charts.force.destroy();
@@ -152,6 +168,23 @@
             });
         }
         
+        // Configure Y axis based on data type
+        const yAxisConfig = {
+            display: true,
+            title: {
+                display: true,
+                text: yAxisLabel || 'Force'
+            }
+        };
+        
+        // If data is in % body weight, set fixed axis from -20 to 120
+        if (hasBodyWeight) {
+            yAxisConfig.min = -20;
+            yAxisConfig.max = 120;
+        } else {
+            yAxisConfig.beginAtZero = true;
+        }
+        
         charts.force = new Chart(ctx, {
             type: 'scatter',
             data: {
@@ -163,12 +196,156 @@
                 aspectRatio: 2.5,
                 plugins: {
                     legend: {
-                        display: true,
+                        display: window.innerWidth > 768,
                         position: 'top'
                     },
                     tooltip: {
-                        mode: 'index',
-                        intersect: false
+                        enabled: true,
+                        mode: window.innerWidth > 768 ? 'index' : 'nearest',
+                        intersect: window.innerWidth <= 768
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Time (s)'
+                        }
+                    },
+                    y: yAxisConfig
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+}
+    
+    // Linear interpolation helper
+    function interpolate(x, x0, y0, x1, y1) {
+        if (x1 === x0) return y0;
+        return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+    }
+    
+    // Synchronize left and right data on common timestamps using interpolation
+    function synchronizeData(tsLeft, leftData, tsRight, rightData) {
+        // Combine all timestamps and sort them
+        const allTimestamps = [...new Set([...tsLeft, ...tsRight])].sort((a, b) => a - b);
+        
+        const syncedLeft = [];
+        const syncedRight = [];
+        const syncedTs = [];
+        
+        let leftIdx = 0;
+        let rightIdx = 0;
+        
+        for (const t of allTimestamps) {
+            // Find left value at time t (interpolate if needed)
+            while (leftIdx < tsLeft.length - 1 && tsLeft[leftIdx + 1] <= t) {
+                leftIdx++;
+            }
+            
+            let leftValue;
+            if (leftIdx < tsLeft.length - 1) {
+                // Interpolate between leftIdx and leftIdx+1
+                leftValue = interpolate(t, tsLeft[leftIdx], leftData[leftIdx], 
+                                       tsLeft[leftIdx + 1], leftData[leftIdx + 1]);
+            } else {
+                // Use last available value
+                leftValue = leftData[leftData.length - 1];
+            }
+            
+            // Find right value at time t (interpolate if needed)
+            while (rightIdx < tsRight.length - 1 && tsRight[rightIdx + 1] <= t) {
+                rightIdx++;
+            }
+            
+            let rightValue;
+            if (rightIdx < tsRight.length - 1) {
+                // Interpolate between rightIdx and rightIdx+1
+                rightValue = interpolate(t, tsRight[rightIdx], rightData[rightIdx], 
+                                        tsRight[rightIdx + 1], rightData[rightIdx + 1]);
+            } else {
+                // Use last available value
+                rightValue = rightData[rightData.length - 1];
+            }
+            
+            syncedTs.push(t);
+            syncedLeft.push(leftValue);
+            syncedRight.push(rightValue);
+        }
+        
+        return { ts: syncedTs, left: syncedLeft, right: syncedRight };
+    }
+    
+    // Calculate PWB (Partial Weight Bearing)
+    function calculatePWB(tsLeft, leftData, tsRight, rightData) {
+        // Synchronize data on common timestamps
+        const synced = synchronizeData(tsLeft, leftData, tsRight, rightData);
+        
+        // Calculate PWB = 1 - (left + right) / 100
+        // left and right are already in % body weight, so BW = 100%
+        const pwbData = [];
+        for (let i = 0; i < synced.ts.length; i++) {
+            const totalCrutchForce = synced.left[i] + synced.right[i];
+            const pwb = (1 - totalCrutchForce / 100) * 100; // Convert to percentage
+            pwbData.push(pwb);
+        }
+        
+        return { ts: synced.ts, pwb: pwbData };
+    }
+    
+    // Render PWB chart
+    function renderPWBChart(tsLeft, leftData, tsRight, rightData) {
+        // Destroy existing chart if any
+        if (charts.pwb) {
+            charts.pwb.destroy();
+        }
+        
+        // Calculate PWB
+        const pwbResult = calculatePWB(tsLeft, leftData, tsRight, rightData);
+        
+        const ctx = elements.pwbCanvas.getContext('2d');
+        
+        // Create data points array
+        const pwbPoints = pwbResult.ts.map((t, i) => ({ x: t, y: pwbResult.pwb[i] }));
+        
+        charts.pwb = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'PWB',
+                    data: pwbPoints,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    showLine: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2.5,
+                plugins: {
+                    legend: {
+                        display: window.innerWidth > 768,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        mode: window.innerWidth > 768 ? 'index' : 'nearest',
+                        intersect: window.innerWidth <= 768,
+                        callbacks: {
+                            label: function(context) {
+                                return `PWB: ${context.parsed.y.toFixed(1)}%`;
+                            }
+                        }
                     }
                 },
                 scales: {
@@ -184,9 +361,10 @@
                         display: true,
                         title: {
                             display: true,
-                            text: 'Force'
+                            text: 'PWB (% Body Weight)'
                         },
-                        beginAtZero: true
+                        min: -20,
+                        max: 120
                     }
                 },
                 interaction: {
@@ -196,7 +374,19 @@
                 }
             }
         });
-}
+    }
+    
+    // Toggle chart panel
+    function toggleChartPanel() {
+        elements.chartContent.classList.toggle('collapsed');
+        elements.toggleChartBtn.classList.toggle('collapsed');
+    }
+    
+    // Toggle PWB panel
+    function togglePwbPanel() {
+        elements.pwbContent.classList.toggle('collapsed');
+        elements.togglePwbBtn.classList.toggle('collapsed');
+    }
     
     // Auto-load data when acquisition is selected
     elements.acquisitionSelect.addEventListener('change', () => {
@@ -204,6 +394,10 @@
             loadAcquisitionData();
         }
     });
+    
+    // Toggle chart button
+    elements.toggleChartBtn.addEventListener('click', toggleChartPanel);
+    elements.togglePwbBtn.addEventListener('click', togglePwbPanel);
     
     // Initialize - load acquisition list on page load
     loadAcquisitionList();

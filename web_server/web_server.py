@@ -482,6 +482,15 @@ async def get_acquisition_data(acquisition_id: str):
     
     acq = acquisitions[acquisition_id]
     
+    # Get body weight from test configuration (kg)
+    body_weight_kg = None
+    test_config = acq.get("test_config")
+    if test_config:
+        body_weight_kg = test_config.get("weight_kg")
+    
+    # Calculate body weight force in Newtons (weight_kg * 9.81 m/s²)
+    body_weight_n = body_weight_kg * 9.81 if body_weight_kg else None
+    
     # If HDF5 data file exists, read it
     path = data_file_path(acquisition_id)
     if path.exists():
@@ -493,18 +502,33 @@ async def get_acquisition_data(acquisition_id: str):
             "samples": hdf5_data["samples"],
             "data": {},
             "conditions": acq.get("conditions", []),
-            "comments": acq.get("comments", [])
+            "comments": acq.get("comments", []),
+            "body_weight_kg": body_weight_kg,
+            "body_weight_n": body_weight_n
         }
         
-        # Add left data and timestamps if available
-        if "left" in hdf5_data:
-            response_data["data"]["left"] = hdf5_data["left"]
-            response_data["data"]["ts_left"] = hdf5_data.get("ts_left", [])
-        
-        # Add right data and timestamps if available
-        if "right" in hdf5_data:
-            response_data["data"]["right"] = hdf5_data["right"]
-            response_data["data"]["ts_right"] = hdf5_data.get("ts_right", [])
+        # Convert data from Newton to % of body weight if body weight is available
+        if body_weight_n:
+            # Add left data and timestamps if available (convert to %)
+            if "left" in hdf5_data:
+                left_percent = [(force / body_weight_n) * 100.0 for force in hdf5_data["left"]]
+                response_data["data"]["left"] = left_percent
+                response_data["data"]["ts_left"] = hdf5_data.get("ts_left", [])
+            
+            # Add right data and timestamps if available (convert to %)
+            if "right" in hdf5_data:
+                right_percent = [(force / body_weight_n) * 100.0 for force in hdf5_data["right"]]
+                response_data["data"]["right"] = right_percent
+                response_data["data"]["ts_right"] = hdf5_data.get("ts_right", [])
+        else:
+            # No body weight available, return raw Newton data
+            if "left" in hdf5_data:
+                response_data["data"]["left"] = hdf5_data["left"]
+                response_data["data"]["ts_left"] = hdf5_data.get("ts_left", [])
+            
+            if "right" in hdf5_data:
+                response_data["data"]["right"] = hdf5_data["right"]
+                response_data["data"]["ts_right"] = hdf5_data.get("ts_right", [])
         
         return response_data
     
