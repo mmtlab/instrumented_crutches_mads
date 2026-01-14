@@ -4,13 +4,15 @@ Designed for Raspberry Pi Zero 2 W - plain HTTP, no auth, maximum simplicity.
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import asyncio
 import json
 import random
 import subprocess
 from datetime import datetime
 from pathlib import Path
+import io
+import csv
 
 import h5py
 import numpy as np
@@ -440,7 +442,9 @@ async def list_acquisitions():
             "id": acq["id"],
             "start_time": acq["start_time"],
             "status": acq["status"],
-            "samples": acq.get("samples", 0)
+            "samples": acq.get("samples", 0),
+            "test_config": acq.get("test_config", {}),
+            "duration": acq.get("duration")
         }
         for acq in acquisitions.values()
     ]
@@ -544,6 +548,143 @@ async def get_acquisition_data(acquisition_id: str):
         "conditions": acq.get("conditions", []),
         "comments": acq.get("comments", [])
     }
+
+
+@app.get("/download/force/{acquisition_id}")
+async def download_force_csv(acquisition_id: str):
+    """Download force data as CSV: timestamp (ns epoch), left (N), right (N)"""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    # Read HDF5 data directly to get absolute timestamps
+    path = data_file_path(acquisition_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Data file not found for {acquisition_id}")
+    
+    # Read raw data with absolute timestamps in milliseconds
+    try:
+        with h5py.File(path, 'r') as f:
+            has_left = '/loadcell/left' in f
+            has_right = '/loadcell/right' in f
+            has_ts_left = '/loadcell/ts_left' in f
+            has_ts_right = '/loadcell/ts_right' in f
+            
+            left_data = []
+            right_data = []
+            ts_left_ms = []
+            ts_right_ms = []
+            
+            if has_left and has_ts_left:
+                left_data = f['/loadcell/left'][:].tolist()
+                ts_left_ms = f['/loadcell/ts_left'][:].tolist()  # milliseconds epoch
+            
+            if has_right and has_ts_right:
+                right_data = f['/loadcell/right'][:].tolist()
+                ts_right_ms = f['/loadcell/ts_right'][:].tolist()  # milliseconds epoch
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read HDF5 file: {str(e)}")
+    
+    # Convert milliseconds to nanoseconds epoch
+    ts_left_ns = [int(ts * 1_000_000) for ts in ts_left_ms]
+    ts_right_ns = [int(ts * 1_000_000) for ts in ts_right_ms]
+    
+    # Synchronize data using linear interpolation on nanosecond timestamps
+    def interpolate(x, x_data, y_data):
+        """Linear interpolation"""
+        if not x_data or not y_data:
+            return None
+        if x <= x_data[0]:
+            return y_data[0]
+        if x >= x_data[-1]:
+            return y_data[-1]
+        for i in range(len(x_data) - 1):
+            if x_data[i] <= x <= x_data[i + 1]:
+                t = (x - x_data[i]) / (x_data[i + 1] - x_data[i])
+                return y_data[i] + t * (y_data[i + 1] - y_data[i])
+        return None
+    
+    # Create unified timestamp array (in nanoseconds)
+    all_ts_ns = sorted(set(ts_left_ns + ts_right_ns))
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['timestamp_ns', 'left_crutch_N', 'right_crutch_N'])
+    
+    for ts_ns in all_ts_ns:
+        left_val = interpolate(ts_ns, ts_left_ns, left_data) if ts_left_ns and left_data else 0.0
+        right_val = interpolate(ts_ns, ts_right_ns, right_data) if ts_right_ns and right_data else 0.0
+        writer.writerow([ts_ns, f"{left_val:.2f}", f"{right_val:.2f}"])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=force_{acquisition_id}.csv"}
+    )
+
+
+@app.get("/download/info/{acquisition_id}")
+async def download_info_csv(acquisition_id: str):
+    """Download acquisition info as CSV"""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # General info
+    writer.writerow(['Field', 'Value'])
+    writer.writerow(['Acquisition ID', acquisition_id])
+    writer.writerow(['Status', acq.get('status', '')])
+    writer.writerow(['Start Time', acq.get('start_time', '')])
+    writer.writerow(['End Time', acq.get('end_time', '')])
+    writer.writerow(['Duration (s)', acq.get('duration', '')])
+    writer.writerow(['Samples', acq.get('samples', '')])
+    writer.writerow([])
+    
+    # Test configuration
+    test_config = acq.get('test_config', {})
+    if test_config:
+        writer.writerow(['Test Configuration'])
+        writer.writerow(['Patient', test_config.get('patient', '')])
+        writer.writerow(['Height (cm)', test_config.get('height_cm', '')])
+        writer.writerow(['Weight (kg)', test_config.get('weight_kg', '')])
+        writer.writerow(['Crutch Height', test_config.get('crutch_height', '')])
+        writer.writerow([])
+    
+    # Comments
+    comments = acq.get('comments', [])
+    if comments:
+        writer.writerow(['Comments'])
+        writer.writerow(['Timestamp', 'Comment'])
+        for comment in comments:
+            writer.writerow([comment.get('timestamp', ''), comment.get('text', '')])
+        writer.writerow([])
+    
+    # Conditions
+    conditions = acq.get('conditions', [])
+    if conditions:
+        writer.writerow(['Conditions'])
+        writer.writerow(['Timestamp', 'Condition'])
+        for condition in conditions:
+            writer.writerow([condition.get('timestamp', ''), condition.get('condition', '')])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=info_{acquisition_id}.csv"}
+    )
 
 
 if __name__ == "__main__":
