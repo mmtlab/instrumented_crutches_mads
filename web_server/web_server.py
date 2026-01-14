@@ -384,6 +384,54 @@ async def save_comment(comment_data: dict):
     }
 
 
+@app.post("/save_condition")
+async def save_condition(condition_data: dict):
+    """Save condition to the current or most recent acquisition."""
+    global acquisitions, current_acquisition_id
+    
+    condition = condition_data.get("condition", "").strip()
+    if not condition:
+        return {
+            "status": "error",
+            "message": "Condition cannot be empty"
+        }
+    
+    # Determine which acquisition to add condition to
+    target_acq_id = None
+    
+    if current_acquisition_id:
+        # Add to current acquisition
+        target_acq_id = current_acquisition_id
+    elif acquisitions:
+        # Add to most recent acquisition
+        sorted_acqs = sorted(acquisitions.values(), key=lambda x: x.get("start_time", ""), reverse=True)
+        target_acq_id = sorted_acqs[0]["id"]
+    else:
+        return {
+            "status": "error",
+            "message": "No acquisitions found"
+        }
+    
+    # Add condition with timestamp
+    timestamp = datetime.now().isoformat()
+    condition_entry = {
+        "timestamp": timestamp,
+        "condition": condition
+    }
+    
+    if "conditions" not in acquisitions[target_acq_id]:
+        acquisitions[target_acq_id]["conditions"] = []
+    
+    acquisitions[target_acq_id]["conditions"].append(condition_entry)
+    save_index(acquisitions)
+    
+    return {
+        "status": "success",
+        "message": f"Condition '{condition}' saved to {target_acq_id}",
+        "acquisition_id": target_acq_id
+    }
+
+
 @app.get("/acquisitions")
 async def list_acquisitions():
     """Return list of available acquisition ids."""
@@ -428,7 +476,7 @@ async def get_last_test_config():
 
 @app.get("/acquisitions/{acquisition_id}")
 async def get_acquisition_data(acquisition_id: str):
-    """Return mock numeric data for plotting."""
+    """Return numeric data for plotting and metadata including conditions."""
     if acquisition_id not in acquisitions:
         raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
     
@@ -443,7 +491,9 @@ async def get_acquisition_data(acquisition_id: str):
             "status": acq.get("status", "completed"),
             "start_time": acq.get("start_time"),
             "samples": hdf5_data["samples"],
-            "data": {}
+            "data": {},
+            "conditions": acq.get("conditions", []),
+            "comments": acq.get("comments", [])
         }
         
         # Add left data and timestamps if available
@@ -467,6 +517,8 @@ async def get_acquisition_data(acquisition_id: str):
         "start_time": acq.get("start_time"),
         "samples": num_samples,
         "data": data,
+        "conditions": acq.get("conditions", []),
+        "comments": acq.get("comments", [])
     }
 
 

@@ -20,6 +20,7 @@
         status: document.getElementById('status'),
         acquisitionId: document.getElementById('acquisition-id'),
         timer: document.getElementById('timer'),
+        currentCondition: document.getElementById('current-condition'),
         startBtn: document.getElementById('start-btn'),
         stopBtn: document.getElementById('stop-btn'),
         feedback: document.getElementById('feedback'),
@@ -35,8 +36,15 @@
         commentsContent: document.getElementById('comments-content'),
         commentText: document.getElementById('comment-text'),
         saveCommentBtn: document.getElementById('save-comment-btn'),
-        commentFeedback: document.getElementById('comment-feedback')
+        commentFeedback: document.getElementById('comment-feedback'),
+        conditionBtn: document.getElementById('condition-btn'),
+        conditionsModal: document.getElementById('conditions-modal'),
+        closeConditionsBtn: document.getElementById('close-conditions-btn'),
+        conditionsGrid: document.getElementById('conditions-grid')
     };
+    
+    // Application state - add current condition
+    state.currentCondition = 'walking'; // Default condition;
     
     // Show feedback message to user
     function showFeedback(message, type) {
@@ -109,6 +117,9 @@
         } else {
             elements.acquisitionId.textContent = 'None';
         }
+        
+        // Update current condition display
+        elements.currentCondition.textContent = state.currentCondition || '-';
         
         // Update button states
         const isRunning = state.currentStatus === 'running';
@@ -352,11 +363,140 @@
         }
     }
     
+    // Load last condition if available
+    async function loadLastCondition() {
+        try {
+            const response = await fetch(`${API_BASE}/acquisitions`);
+            
+            if (!response.ok) {
+                return; // Use default walking
+            }
+            
+            const data = await response.json();
+            const acquisitions = data.acquisitions;
+            
+            if (acquisitions.length === 0) {
+                state.currentCondition = 'walking'; // Default
+                return;
+            }
+            
+            // Find the most recent acquisition
+            const lastAcq = acquisitions[acquisitions.length - 1];
+            
+            // Try to get the last condition from the most recent acquisition
+            const response2 = await fetch(`${API_BASE}/acquisitions/${lastAcq.id}`);
+            if (!response2.ok) {
+                state.currentCondition = 'walking';
+                return;
+            }
+            
+            const acqData = await response2.json();
+            
+            // Check if there are conditions recorded
+            if (acqData.conditions && acqData.conditions.length > 0) {
+                const lastCondition = acqData.conditions[acqData.conditions.length - 1];
+                state.currentCondition = lastCondition.condition;
+            } else {
+                state.currentCondition = 'walking'; // Default
+            }
+            
+            updateUI();
+        } catch (error) {
+            console.error('Load last condition error:', error);
+            state.currentCondition = 'walking'; // Default
+            updateUI();
+        }
+    }
+    let conditionsConfig = [];
+    
+    async function loadConditions() {
+        try {
+            const response = await fetch('/static/conditions.json');
+            if (!response.ok) throw new Error('Failed to load conditions');
+            
+            const data = await response.json();
+            conditionsConfig = data.conditions;
+            
+            // Render condition buttons in the modal
+            elements.conditionsGrid.innerHTML = '';
+            conditionsConfig.forEach(condition => {
+                const btn = document.createElement('button');
+                btn.className = 'condition-btn';
+                btn.textContent = condition.label;
+                btn.style.backgroundColor = condition.color;
+                btn.onclick = () => selectCondition(condition.id, condition.label);
+                elements.conditionsGrid.appendChild(btn);
+            });
+        } catch (error) {
+            console.error('Load conditions error:', error);
+        }
+    }
+    
+    // Open conditions modal
+    function openConditionsModal() {
+        elements.conditionsModal.classList.add('open');
+        // Prevent scrolling on body when modal is open
+        document.body.style.overflow = 'hidden';
+    }
+    
+    // Close conditions modal
+    function closeConditionsModal() {
+        elements.conditionsModal.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+    
+    // Select a condition
+    async function selectCondition(conditionId, conditionLabel) {
+        try {
+            // Update local state immediately
+            state.currentCondition = conditionLabel;
+            updateUI();
+            
+            const response = await fetch(`${API_BASE}/save_condition`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ condition: conditionLabel })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Show feedback but don't close modal
+                showFeedback(`✓ Condition: ${conditionLabel}`, 'success');
+            } else {
+                showFeedback(`⚠ ${data.message}`, 'warning');
+            }
+        } catch (error) {
+            console.error('Select condition error:', error);
+            showFeedback('✗ Cannot save condition. Check connection.', 'error');
+        }
+    }
+    
     // Event listeners
     elements.offsetBtn.addEventListener('click', setOffset);
     elements.toggleConfigBtn.addEventListener('click', toggleConfigPanel);
     elements.toggleCommentsBtn.addEventListener('click', toggleCommentsPanel);
     elements.saveCommentBtn.addEventListener('click', saveComment);
+    elements.conditionBtn.addEventListener('click', openConditionsModal);
+    elements.closeConditionsBtn.addEventListener('click', closeConditionsModal);
+    
+    // Close modal when clicking outside the modal content
+    elements.conditionsModal.addEventListener('click', (e) => {
+        if (e.target === elements.conditionsModal) {
+            closeConditionsModal();
+        }
+    });
+    
+    // Close modal with Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && elements.conditionsModal.classList.contains('open')) {
+            closeConditionsModal();
+        }
+    });
     
     elements.startBtn.addEventListener('click', startAcquisition);
     elements.stopBtn.addEventListener('click', stopAcquisition);
@@ -364,5 +504,8 @@
     // Initialize on page load
     checkStatus();
     loadLastTestConfig();
+    loadConditions();
+    loadLastCondition();
+    updateUI();
     
 })();
