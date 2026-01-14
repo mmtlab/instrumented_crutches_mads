@@ -12,27 +12,69 @@
         <a href="/static/visualization.html" class="link">View Data →</a>
         
         <div class="section">
-            <h2>Status</h2>
+            <div class="section-header">
+                <h2>Test Configuration</h2>
+                <button id="toggle-config-btn" class="toggle-btn collapsed" title="Collapse/Expand">+</button>
+            </div>
+            <div id="config-content" class="section-content collapsed">
+                <div class="form-group">
+                    <label for="patient-name">Patient</label>
+                    <input type="text" id="patient-name" class="input" placeholder="Patient name">
+                </div>
+                <div class="form-group">
+                    <label for="height-cm">Height (cm)</label>
+                    <input type="number" id="height-cm" class="input" placeholder="Height" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="weight-kg">Weight (kg)</label>
+                    <input type="number" id="weight-kg" class="input" placeholder="Weight" step="0.1" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="crutch-height">Crutch Height (#hole)</label>
+                    <input type="number" id="crutch-height" class="input" placeholder="Hole number" min="0">
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Acquisition</h2>
             <div class="status">
                 <div><strong>Current:</strong> <span id="status" class="status-ready">Ready</span></div>
                 <div><strong>Recording:</strong> <span id="acquisition-id">None</span></div>
                 <div><strong>Duration:</strong> <span id="timer">00:00</span></div>
             </div>
-        </div>
-
-        <div class="section">
-            <button id="start-btn" class="btn btn-start">Start Recording</button>
-            <button id="stop-btn" class="btn btn-stop" disabled>Stop Recording</button>
+            <div style="margin-top: 12px;">
+                <button id="start-btn" class="btn btn-start">Start</button>
+                <button id="stop-btn" class="btn btn-stop" disabled>Stop</button>
+            </div>
             <div id="feedback" class="feedback"></div>
         </div>
 
         <div class="section">
             <h2>Calibration</h2>
-            <button id="offset-btn" class="btn">Set Offset</button>
+            <button id="offset-btn" class="btn">Calibrate</button>
             <div id="offset-feedback" class="feedback"></div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Comments</h2>
+                <button id="toggle-comments-btn" class="toggle-btn collapsed" title="Collapse/Expand">+</button>
+            </div>
+            <div id="comments-content" class="section-content collapsed">
+                <div class="form-group">
+                    <textarea id="comment-text" class="input" rows="3" placeholder="Write a comment here. Press Start to save it with the new recording, or use the button below to add it to the current/last recording."></textarea>
+                </div>
+                <button id="save-comment-btn" class="btn">Add to Current/Last</button>
+                <div id="comment-feedback" class="feedback"></div>
+            </div>
         </div>
     </div>
 
     <script src="/static/control.js"></script>
+    
+    <footer class="page-footer">
+        <img src="/static/mmtlab.png" alt="MMTLab">
+    </footer>
 </body>
 </html>

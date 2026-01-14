@@ -24,7 +24,18 @@
         stopBtn: document.getElementById('stop-btn'),
         feedback: document.getElementById('feedback'),
         offsetBtn: document.getElementById('offset-btn'),
-        offsetFeedback: document.getElementById('offset-feedback')
+        offsetFeedback: document.getElementById('offset-feedback'),
+        patientName: document.getElementById('patient-name'),
+        heightCm: document.getElementById('height-cm'),
+        weightKg: document.getElementById('weight-kg'),
+        crutchHeight: document.getElementById('crutch-height'),
+        toggleConfigBtn: document.getElementById('toggle-config-btn'),
+        configContent: document.getElementById('config-content'),
+        toggleCommentsBtn: document.getElementById('toggle-comments-btn'),
+        commentsContent: document.getElementById('comments-content'),
+        commentText: document.getElementById('comment-text'),
+        saveCommentBtn: document.getElementById('save-comment-btn'),
+        commentFeedback: document.getElementById('comment-feedback')
     };
     
     // Show feedback message to user
@@ -110,9 +121,24 @@
         try {
             showFeedback('Starting acquisition...', 'info');
             
+            // Collect test configuration
+            const testConfig = {
+                patient: elements.patientName.value || null,
+                height_cm: elements.heightCm.value ? parseInt(elements.heightCm.value) : null,
+                weight_kg: elements.weightKg.value ? parseFloat(elements.weightKg.value) : null,
+                crutch_height: elements.crutchHeight.value ? parseInt(elements.crutchHeight.value) : null
+            };
+            
+            // Add comment if present
+            const comment = elements.commentText.value.trim();
+            if (comment) {
+                testConfig.comment = comment;
+            }
+            
             const response = await fetch(`${API_BASE}/start`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(testConfig)
             });
             
             if (!response.ok) {
@@ -128,6 +154,11 @@
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
                 showFeedback(`✓ Recording started (#${num})`, 'success');
+                
+                // Clear comment field after successful start
+                if (comment) {
+                    elements.commentText.value = '';
+                }
             } else {
                 showFeedback(`⚠ ${data.message}`, 'warning');
             }
@@ -238,13 +269,100 @@
         }, 5000);
     }
     
+    // Load last test configuration
+    async function loadLastTestConfig() {
+        try {
+            const response = await fetch(`${API_BASE}/last-test-config`);
+            
+            if (!response.ok) {
+                return; // Silently fail if no data
+            }
+            
+            const data = await response.json();
+            const testConfig = data.test_config;
+            
+            if (testConfig) {
+                if (testConfig.patient) elements.patientName.value = testConfig.patient;
+                if (testConfig.height_cm) elements.heightCm.value = testConfig.height_cm;
+                if (testConfig.weight_kg) elements.weightKg.value = testConfig.weight_kg;
+                if (testConfig.crutch_height) elements.crutchHeight.value = testConfig.crutch_height;
+            }
+        } catch (error) {
+            console.error('Load last test config error:', error);
+            // Silently fail - this is optional
+        }
+    }
+    
+    // Toggle configuration panel
+    function toggleConfigPanel() {
+        elements.configContent.classList.toggle('collapsed');
+        elements.toggleConfigBtn.classList.toggle('collapsed');
+    }
+    
+    // Toggle comments panel
+    function toggleCommentsPanel() {
+        elements.commentsContent.classList.toggle('collapsed');
+        elements.toggleCommentsBtn.classList.toggle('collapsed');
+    }
+    
+    // Show comment feedback message
+    function showCommentFeedback(message, type) {
+        elements.commentFeedback.textContent = message;
+        elements.commentFeedback.className = `feedback feedback-${type}`;
+        elements.commentFeedback.style.display = 'block';
+        
+        setTimeout(() => {
+            elements.commentFeedback.style.display = 'none';
+        }, 5000);
+    }
+    
+    // Save comment
+    async function saveComment() {
+        const comment = elements.commentText.value.trim();
+        
+        if (!comment) {
+            showCommentFeedback('⚠ Comment cannot be empty', 'warning');
+            return;
+        }
+        
+        try {
+            showCommentFeedback('Saving comment...', 'info');
+            
+            const response = await fetch(`${API_BASE}/save_comment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comment: comment })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showCommentFeedback(`✓ Comment saved`, 'success');
+                elements.commentText.value = ''; // Clear the textarea
+            } else {
+                showCommentFeedback(`⚠ ${data.message}`, 'warning');
+            }
+        } catch (error) {
+            console.error('Save comment error:', error);
+            showCommentFeedback('✗ Cannot save comment. Check connection.', 'error');
+        }
+    }
+    
     // Event listeners
     elements.offsetBtn.addEventListener('click', setOffset);
+    elements.toggleConfigBtn.addEventListener('click', toggleConfigPanel);
+    elements.toggleCommentsBtn.addEventListener('click', toggleCommentsPanel);
+    elements.saveCommentBtn.addEventListener('click', saveComment);
     
     elements.startBtn.addEventListener('click', startAcquisition);
     elements.stopBtn.addEventListener('click', stopAcquisition);
     
     // Initialize on page load
     checkStatus();
+    loadLastTestConfig();
     
 })();

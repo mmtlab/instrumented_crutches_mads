@@ -112,11 +112,12 @@ public:
     // params needs to be cast to json
     _params.merge_patch(*(json *)params);
 
-    if (_params.contains("side")) {
+    if (_params.contains("side") && (_params["side"] == "left" || _params["side"] == "right")) {
       std::cout << "Loadcell: Side set to " << _params["side"] << std::endl;
     } else {
-      std::cout << "Loadcell: Side parameter not set, using default 'unknown'" << std::endl;
-      throw std::runtime_error("Loadcell: side parameter is required");
+      _error = "Loadcell: Side parameter not set or invalid (only 'left' or 'right' allowed)";
+      std::cout << _error << std::endl;
+      throw std::runtime_error(_error);
     }
       
   }

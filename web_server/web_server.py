@@ -202,8 +202,29 @@ async def root():
     return FileResponse("static/control.html")
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve favicon for browsers."""
+    return FileResponse("static/favicon.ico")
+
+@app.get("/apple-touch-icon.png")
+async def apple_touch_icon():
+    """Serve apple touch icon for iOS."""
+    return FileResponse("static/favicon.ico")
+
+@app.get("/android-chrome-192x192.png")
+async def android_chrome_192():
+    """Serve android chrome icon 192x192."""
+    return FileResponse("static/favicon.ico")
+
+@app.get("/android-chrome-512x512.png")
+async def android_chrome_512():
+    """Serve android chrome icon 512x512."""
+    return FileResponse("static/favicon.ico")
+
+
 @app.post("/start")
-async def start_acquisition():
+async def start_acquisition(test_config: dict = None):
     """Start a fake acquisition and return generated acquisition id."""
     global current_acquisition_id, next_id, acquisitions
     
@@ -225,13 +246,30 @@ async def start_acquisition():
             "message": f"Bridge start failed: {bridge_output}"
         }
     
-    # Create acquisition record
-    acquisitions[acquisition_id] = {
+    # Create acquisition record with test configuration
+    acq_record = {
         "id": acquisition_id,
         "start_time": datetime.now().isoformat(),
         "status": "running",
         "samples": 0
     }
+    
+    # Add test configuration if provided
+    if test_config:
+        acq_record["test_config"] = {
+            "patient": test_config.get("patient"),
+            "height_cm": test_config.get("height_cm"),
+            "weight_kg": test_config.get("weight_kg"),
+            "crutch_height": test_config.get("crutch_height")
+        }
+        
+        # Add initial comment if provided
+        comment = test_config.get("comment", "").strip()
+        if comment:
+            timestamp = datetime.now().isoformat()
+            acq_record["comments"] = [f"[{timestamp}] {comment}"]
+    
+    acquisitions[acquisition_id] = acq_record
     save_index(acquisitions)
     
     current_acquisition_id = acquisition_id
@@ -301,6 +339,51 @@ async def set_offset():
         }
 
 
+@app.post("/save_comment")
+async def save_comment(comment_data: dict):
+    """Save comment to the current or most recent acquisition."""
+    global acquisitions, current_acquisition_id
+    
+    comment = comment_data.get("comment", "").strip()
+    if not comment:
+        return {
+            "status": "error",
+            "message": "Comment cannot be empty"
+        }
+    
+    # Determine which acquisition to add comment to
+    target_acq_id = None
+    
+    if current_acquisition_id:
+        # Add to current acquisition
+        target_acq_id = current_acquisition_id
+    elif acquisitions:
+        # Add to most recent acquisition
+        sorted_acqs = sorted(acquisitions.values(), key=lambda x: x.get("start_time", ""), reverse=True)
+        target_acq_id = sorted_acqs[0]["id"]
+    else:
+        return {
+            "status": "error",
+            "message": "No acquisitions found"
+        }
+    
+    # Add comment with timestamp
+    timestamp = datetime.now().isoformat()
+    comment_entry = f"[{timestamp}] {comment}"
+    
+    if "comments" not in acquisitions[target_acq_id]:
+        acquisitions[target_acq_id]["comments"] = []
+    
+    acquisitions[target_acq_id]["comments"].append(comment_entry)
+    save_index(acquisitions)
+    
+    return {
+        "status": "success",
+        "message": f"Comment saved to {target_acq_id}",
+        "acquisition_id": target_acq_id
+    }
+
+
 @app.get("/acquisitions")
 async def list_acquisitions():
     """Return list of available acquisition ids."""
@@ -318,6 +401,28 @@ async def list_acquisitions():
         "acquisitions": acquisition_list,
         "count": len(acquisition_list),
         "current_acquisition": current_acquisition_id
+    }
+
+
+@app.get("/last-test-config")
+async def get_last_test_config():
+    """Return test configuration from the last acquisition."""
+    if not acquisitions:
+        return {
+            "test_config": None,
+            "message": "No acquisitions found"
+        }
+    
+    # Find the last acquisition (sorted by start_time)
+    sorted_acqs = sorted(acquisitions.values(), key=lambda x: x.get("start_time", ""), reverse=True)
+    last_acq = sorted_acqs[0]
+    
+    test_config = last_acq.get("test_config", {})
+    
+    return {
+        "test_config": test_config,
+        "acquisition_id": last_acq.get("id"),
+        "start_time": last_acq.get("start_time")
     }
 
 
