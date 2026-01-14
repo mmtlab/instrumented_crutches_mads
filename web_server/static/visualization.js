@@ -15,7 +15,6 @@
     // DOM elements
     const elements = {
         acquisitionSelect: document.getElementById('acquisition-select'),
-        loadBtn: document.getElementById('load-btn'),
         feedback: document.getElementById('feedback'),
         forceCanvas: document.getElementById('force-chart')
     };
@@ -51,7 +50,8 @@
             }
             
             // Populate dropdown with acquisitions (newest first)
-            data.acquisitions.reverse().forEach(acq => {
+            const sortedAcqs = [...data.acquisitions].reverse();
+            sortedAcqs.forEach(acq => {
                 const option = document.createElement('option');
                 option.value = acq.id;
                 const num = acq.id.replace('acq_', '');
@@ -60,8 +60,15 @@
                 elements.acquisitionSelect.appendChild(option);
             });
             
-            const plural = data.acquisitions.length === 1 ? '' : 's';
-            showFeedback(`${data.acquisitions.length} recording${plural} available`, 'success');
+            // Auto-select and load the most recent acquisition (first in reversed list)
+            if (sortedAcqs.length > 0) {
+                const mostRecentId = sortedAcqs[0].id;
+                elements.acquisitionSelect.value = mostRecentId;
+                // Load the most recent acquisition automatically
+                await loadAcquisitionData();
+            } else {
+                showFeedback('No recordings available', 'info');
+            }
         } catch (error) {
             console.error('Load acquisitions error:', error);
             showFeedback('Cannot load recordings. Check connection.', 'error');
@@ -92,8 +99,8 @@
             const result = await response.json();
             const data = result.data;
             
-            // Render chart with single force trace
-            renderForceChart(data.timestamp, data.force);
+            // Render chart with left and/or right force traces
+            renderForceChart(data.ts_left, data.left, data.ts_right, data.right);
             
             const num = acquisitionId.replace('acq_', '');
             showFeedback(`✓ Showing recording #${num} (${result.samples} samples)`, 'success');
@@ -104,7 +111,7 @@
     }
 
     // Render force chart using Chart.js
-    function renderForceChart(timestamps, forceData) {
+    function renderForceChart(tsLeft, leftData, tsRight, rightData) {
         // Destroy existing chart if any
         if (charts.force) {
             charts.force.destroy();
@@ -112,21 +119,43 @@
         
         const ctx = elements.forceCanvas.getContext('2d');
         
+        // Build datasets array based on available data
+        const datasets = [];
+        
+        if (leftData && tsLeft) {
+            // Create data points array with x (timestamp) and y (value)
+            const leftPoints = tsLeft.map((t, i) => ({ x: t, y: leftData[i] }));
+            datasets.push({
+                label: 'Left Crutch',
+                data: leftPoints,
+                borderColor: '#dc2626',
+                backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.1,
+                showLine: true
+            });
+        }
+        
+        if (rightData && tsRight) {
+            // Create data points array with x (timestamp) and y (value)
+            const rightPoints = tsRight.map((t, i) => ({ x: t, y: rightData[i] }));
+            datasets.push({
+                label: 'Right Crutch',
+                data: rightPoints,
+                borderColor: '#16a34a',
+                backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.1,
+                showLine: true
+            });
+        }
+        
         charts.force = new Chart(ctx, {
-            type: 'line',
+            type: 'scatter',
             data: {
-                labels: timestamps,
-                datasets: [
-                    {
-                        label: 'Force',
-                        data: forceData,
-                        borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.1
-                    }
-                ]
+                datasets: datasets
             },
             options: {
                 responsive: true,
@@ -144,13 +173,11 @@
                 },
                 scales: {
                     x: {
+                        type: 'linear',
                         display: true,
                         title: {
                             display: true,
                             text: 'Time (s)'
-                        },
-                        ticks: {
-                            maxTicksLimit: 10
                         }
                     },
                     y: {
@@ -171,13 +198,12 @@
         });
 }
     
-    // Enable load button when acquisition is selected
+    // Auto-load data when acquisition is selected
     elements.acquisitionSelect.addEventListener('change', () => {
-        elements.loadBtn.disabled = !elements.acquisitionSelect.value;
+        if (elements.acquisitionSelect.value) {
+            loadAcquisitionData();
+        }
     });
-    
-    // Load data when button clicked
-    elements.loadBtn.addEventListener('click', loadAcquisitionData);
     
     // Initialize - load acquisition list on page load
     loadAcquisitionList();

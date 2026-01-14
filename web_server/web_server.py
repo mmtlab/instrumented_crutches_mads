@@ -5,13 +5,16 @@ Designed for Raspberry Pi Zero 2 W - plain HTTP, no auth, maximum simplicity.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import uvicorn
-from datetime import datetime
-import random
-from pathlib import Path
+import asyncio
 import json
+import random
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
 import h5py
 import numpy as np
+import uvicorn
 from dateutil import parser as date_parser
 
 app = FastAPI(title="Instrumented Crutches")
@@ -46,7 +49,8 @@ def compute_next_id(acq_dict):
     max_num = 0
     for k in acq_dict.keys():
         try:
-            num = int(k.replace("acq_", ""))
+            # Handle both acq_19 and acq_0019 formats
+            num = int(k.replace("acq_", "").lstrip("0") or "0")
             if num > max_num:
                 max_num = num
         except Exception:
@@ -58,29 +62,91 @@ def data_file_path(acq_id: str) -> Path:
     return DATA_DIR / f"{acq_id}.h5"
 
 
+def send_bridge_command(command: str, acq_id: str = None):
+    payload_dict = {"command": command}
+    if acq_id:
+        # Extract numeric ID from "acq_19" or "acq_0019" format
+        try:
+            id_num = int(acq_id.replace('acq_', ''))
+            payload_dict["id"] = id_num
+        except (IndexError, ValueError):
+            payload_dict["id"] = acq_id
+    payload = json.dumps(payload_dict)
+    try:
+        result = subprocess.run(
+            ["mads-bridge", "-t", "ws_command", "-m", payload],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        return True, (result.stdout.strip() or "ok")
+    except FileNotFoundError:
+        return False, "mads-bridge executable not found"
+    except subprocess.CalledProcessError as exc:
+        output = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        return False, output
+    except Exception as exc:
+        return False, str(exc)
+
+
+async def send_bridge_command_async(command: str, acq_id: str = None):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, send_bridge_command, command, acq_id)
+
+
 def read_hdf5_data(file_path: Path):
     """Read HDF5 file with loadcell data and convert timestamps to relative seconds."""
     try:
         with h5py.File(file_path, 'r') as f:
-            # Read loadcell force data
-            force_data = f['/loadcell/loadcell_x'][:]
-            # Read timestamp strings
-            timestamp_strings = f['/loadcell/timestamp'][:]
+            result = {}
             
-            # Decode timestamps if they are bytes
-            if isinstance(timestamp_strings[0], bytes):
-                timestamp_strings = [ts.decode('ascii') for ts in timestamp_strings]
+            # Check which datasets are available
+            has_left = '/loadcell/left' in f
+            has_right = '/loadcell/right' in f
+            has_ts_left = '/loadcell/ts_left' in f
+            has_ts_right = '/loadcell/ts_right' in f
             
-            # Parse timestamps and convert to relative seconds
-            timestamps_parsed = [date_parser.parse(ts) for ts in timestamp_strings]
-            start_time = timestamps_parsed[0]
-            relative_seconds = [(ts - start_time).total_seconds() for ts in timestamps_parsed]
+            if not has_left and not has_right:
+                raise HTTPException(status_code=500, detail="No loadcell data found in HDF5 file")
             
-            return {
-                "timestamp": relative_seconds,
-                "force": force_data.tolist(),
-                "samples": len(force_data)
-            }
+            start_time_ms = None
+            
+            # Read left crutch data and timestamps if available
+            if has_left and has_ts_left:
+                left_data = f['/loadcell/left'][:]
+                ts_left_ms = f['/loadcell/ts_left'][:]  # milliseconds epoch
+                
+                # Convert to seconds and make relative
+                if start_time_ms is None:
+                    start_time_ms = ts_left_ms[0]
+                ts_left_relative = [(ts - start_time_ms) / 1000.0 for ts in ts_left_ms]
+                
+                result["left"] = left_data.tolist()
+                result["ts_left"] = ts_left_relative
+            
+            # Read right crutch data and timestamps if available
+            if has_right and has_ts_right:
+                right_data = f['/loadcell/right'][:]
+                ts_right_ms = f['/loadcell/ts_right'][:]  # milliseconds epoch
+                
+                # Convert to seconds and make relative
+                if start_time_ms is None:
+                    start_time_ms = ts_right_ms[0]
+                ts_right_relative = [(ts - start_time_ms) / 1000.0 for ts in ts_right_ms]
+                
+                result["right"] = right_data.tolist()
+                result["ts_right"] = ts_right_relative
+            
+            # Calculate total samples
+            total_samples = 0
+            if "left" in result:
+                total_samples += len(result["left"])
+            if "right" in result:
+                total_samples += len(result["right"])
+            result["samples"] = total_samples
+            
+            return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading HDF5 file: {str(e)}")
 
@@ -112,7 +178,15 @@ for acq_id, acq in acquisitions.items():
     if h5_path.exists() and acq.get("samples", 0) == 0:
         try:
             with h5py.File(h5_path, 'r') as f:
-                samples = len(f['/loadcell/loadcell_x'][:])
+                # Try to get sample count from timestamp dataset
+                if '/loadcell/timestamp' in f:
+                    samples = len(f['/loadcell/timestamp'][:])
+                elif '/loadcell/left' in f:
+                    samples = len(f['/loadcell/left'][:])
+                elif '/loadcell/right' in f:
+                    samples = len(f['/loadcell/right'][:])
+                else:
+                    samples = 0
                 acq["samples"] = samples
         except Exception:
             pass
@@ -141,8 +215,15 @@ async def start_acquisition():
         }
     
     # Generate new acquisition id
-    acquisition_id = f"acq_{next_id:04d}"
+    acquisition_id = f"acq_{next_id}"
     next_id += 1
+    
+    success, bridge_output = await send_bridge_command_async("start", acquisition_id)
+    if not success:
+        return {
+            "status": "error",
+            "message": f"Bridge start failed: {bridge_output}"
+        }
     
     # Create acquisition record
     acquisitions[acquisition_id] = {
@@ -173,6 +254,13 @@ async def stop_acquisition():
             "message": "No acquisition running"
         }
     
+    success, bridge_output = await send_bridge_command_async("stop", current_acquisition_id)
+    if not success:
+        return {
+            "status": "error",
+            "message": f"Bridge stop failed: {bridge_output}"
+        }
+    
     # Update acquisition record
     acquisition_id = current_acquisition_id
     if acquisition_id in acquisitions:
@@ -189,6 +277,28 @@ async def stop_acquisition():
         "acquisition_id": acquisition_id,
         "message": f"Acquisition {acquisition_id} stopped"
     }
+
+
+@app.post("/set_offset")
+async def set_offset():
+    """Send set_offset command via bridge."""
+    try:
+        success, bridge_output = await send_bridge_command_async("set_offset")
+        if not success:
+            return {
+                "status": "error",
+                "message": f"Bridge command failed: {bridge_output}"
+            }
+        
+        return {
+            "status": "success",
+            "message": "Offset set"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 @app.get("/acquisitions")
@@ -223,16 +333,25 @@ async def get_acquisition_data(acquisition_id: str):
     path = data_file_path(acquisition_id)
     if path.exists():
         hdf5_data = read_hdf5_data(path)
-        return {
+        response_data = {
             "acquisition_id": acquisition_id,
             "status": acq.get("status", "completed"),
             "start_time": acq.get("start_time"),
             "samples": hdf5_data["samples"],
-            "data": {
-                "timestamp": hdf5_data["timestamp"],
-                "force": hdf5_data["force"]
-            }
+            "data": {}
         }
+        
+        # Add left data and timestamps if available
+        if "left" in hdf5_data:
+            response_data["data"]["left"] = hdf5_data["left"]
+            response_data["data"]["ts_left"] = hdf5_data.get("ts_left", [])
+        
+        # Add right data and timestamps if available
+        if "right" in hdf5_data:
+            response_data["data"]["right"] = hdf5_data["right"]
+            response_data["data"]["ts_right"] = hdf5_data.get("ts_right", [])
+        
+        return response_data
     
     # Fallback: generate mock data if HDF5 file doesn't exist
     num_samples = acq.get("samples", 1000)
