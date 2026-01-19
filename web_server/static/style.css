@@ -400,7 +400,7 @@ canvas {
 }
 
 .logo-panel img {
-    height: 140px;
+    height: 110px;
     width: auto;
     display: inline-block;
     opacity: 0.8;
@@ -609,6 +609,6 @@ canvas {
     }
     
     .logo-panel img {
-        height: 80px;
+        height: 70px;
     }
 }
