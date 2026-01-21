@@ -38,6 +38,16 @@ endif()
 
 # DEPENDENCIES #################################################################
 include(FetchContent)
+
+# Platform detection
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm" OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+  set(PLATFORM_RASPBERRY_PI TRUE)
+  message(STATUS "Detected Raspberry Pi platform (ARM processor)")
+else()
+  set(PLATFORM_WINDOWS TRUE)
+  message(STATUS "Detected Windows/Desktop platform")
+endif()
+
 # pugg is for the plugin system
 FetchContent_Declare(pugg 
   GIT_REPOSITORY https://github.com/pbosetti/pugg.git
@@ -109,8 +119,14 @@ else()
 endif()
 include_directories(${json_SOURCE_DIR}/include)
 
-# These plugins are always build and use for testing
-add_plugin(loadcell)
+
+# lgpio and hx711 libraries for Raspberry Pi must be already installed on the system
+if(PLATFORM_RASPBERRY_PI)
+  add_plugin(loadcell LIBS lgpio hx711)
+else()
+  add_plugin(loadcell)
+endif()
+
 
 
 # INSTALL ######################################################################

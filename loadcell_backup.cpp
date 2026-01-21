@@ -22,21 +22,8 @@
 #include <pugg/Kernel.h>
 
 // other includes as needed here
+#include <hx711/common.h>  // Library for HX711
 #include <memory>          // For std::unique_ptr
-#include <chrono>          // For timing
-
-// Platform detection
-#ifdef __arm__
-  #define PLATFORM_RASPBERRY_PI
-#elif defined(_WIN32) || defined(_WIN64)
-  #define PLATFORM_WINDOWS
-#endif
-
-// Include HX711 only on Raspberry Pi
-#ifdef PLATFORM_RASPBERRY_PI
-  #include <hx711/common.h>  // Library for HX711
-  using namespace HX711;
-#endif
 
 // Define the name of the plugin
 #ifndef PLUGIN_NAME
@@ -47,6 +34,7 @@
 using namespace std;
 using json = nlohmann::json;
 using namespace std::chrono;
+using namespace HX711;
 
 
 // Plugin class. This shall be the only part that needs to be modified,
@@ -54,7 +42,6 @@ using namespace std::chrono;
 class LoadcellPlugin : public Filter<json, json> {
 
 public:
-
   // Constructor
   LoadcellPlugin() : _hx(nullptr) {}
 
@@ -65,37 +52,21 @@ public:
   return_type load_data(json const &input, string topic = "") override {
     
     // if topic is "command", process commands here
-    if (topic == "command") {
-      if (!input.contains("command")) {
-        _error = "Loadcell: missing command in payload";
-        return return_type::error;
-      }
-
+    if (topic == "command" && input.contains("command")) {
       string action = input["command"];
-      if (action == "start") {
-        if (_acquiring) {
-          _error = "Loadcell: start requested while already acquiring";
-          return return_type::warning;
-        }
+      if (action == "start" && _acquiring == false) {
         _acquiring = true;
         std::cout << "Loadcell: Starting acquisition" << std::endl;
-      } else if (action == "stop") {
-        if (_acquiring == false) {
-          _error = "Loadcell: stop requested while not acquiring";
-          return return_type::warning;
-        }
+        // other actions as needed
+      } else if (action == "stop" && _acquiring == true) {
         _acquiring = false;
         std::cout << "Loadcell: Stopping acquisition" << std::endl;
-      } else if (action == "set_offset") {
-        if (_acquiring) {
-          _error = "Loadcell: set_offset requested while acquiring";
-          return return_type::warning;
-        }
+        // other actions as needed
+      } else if (action == "set_offset" && _acquiring == false) {
         _setting_offset = true;
         std::cout << "Loadcell: Setting offset" << std::endl;
       } else {
-        _error = "Loadcell: unknown command '" + action + "'";
-        return return_type::error;
+        return return_type::retry;
       }
     }
 
@@ -112,46 +83,15 @@ public:
       auto now = std::chrono::system_clock::now();
       out["ts_" + _params["side"].get<string>()] = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 
-#ifdef PLATFORM_RASPBERRY_PI
-
-      try {
-        // Real hardware acquisition on Raspberry Pi
-        if (_hx && _enabled) {
-          double loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
-          out[_params["side"]] = loadCellValue - _offset;
-        }
-      } catch (const std::exception &e) {
-        _error = "Loadcell: Error reading from HX711: " + string(e.what());
-        return return_type::warning;
+      // Read the load cell value
+      if (_hx && _enabled) {
+        double loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
+        out[_params["side"]] = loadCellValue - _offset;
       }
       
-#else
-
-      // Windows simulation mode
-      float test = 0.0;
-      if (_params["side"] == "right") // Simulate different readings for left and right
-        test = 140.0;
-      else
-        test = 40.0;
-      
-      out[_params["side"]] = test + _debug_offset + (rand() % 6 - 3) - _offset; // Simulated data with noise
-
-#endif
 
     } else if (_setting_offset && _acquiring == false) {
-#ifdef PLATFORM_RASPBERRY_PI
-
-      try {
-        // Real hardware offset on Raspberry Pi
-        _offset = _hx->weight(40).getValue(Mass::Unit::N);
-      } catch (const std::exception &e) {
-        _error = "Loadcell: Error reading from HX711 for offset: " + string(e.what());
-        return return_type::warning;
-      }
-#else
-      // Windows simulation mode
-      _offset = _debug_offset;
-#endif
+      _offset = _hx->weight(40).getValue(Mass::Unit::N);
       _setting_offset = false;
       std::cout << "Loadcell: Offset set to " << _offset << std::endl;
       
@@ -173,8 +113,6 @@ public:
     // provide sensible defaults for the parameters by setting e.g.
     _params["side"] = "unknown";
 
-    _debug_offset = (rand() % 100 - 50); // Emulate some offset value
-
     // then merge the defaults with the actually provided parameters
     // params needs to be cast to json
     _params.merge_patch(*(json *)params);
@@ -187,8 +125,7 @@ public:
       throw std::runtime_error(_error);
     }
 
-#ifdef PLATFORM_RASPBERRY_PI
-    // Read configuration parameters for the single HX711 sensor (Raspberry Pi only)
+    // Read configuration parameters for the single HX711 sensor
     if (_params.contains("datapin") && _params.contains("clockpin") && _params.contains("scaling")) {
       int dataPin = _params["datapin"].get<int>();
       int clockPin = _params["clockpin"].get<int>();
@@ -198,17 +135,12 @@ public:
       // Initialize the HX711 sensor
       if (_enabled && dataPin != -1 && clockPin != -1) {
         _hx = std::make_unique<AdvancedHX711>(dataPin, clockPin, scaling, 0.0, Rate::HZ_80);
-        std::cout << "Loadcell: HX711 initialized with dataPin=" << dataPin 
-                  << ", clockPin=" << clockPin << ", scaling=" << scaling << std::endl;
       }
     } else {
       std::cerr << "Missing required parameters: datapin, clockpin, or scaling" << std::endl;
       throw std::invalid_argument("Missing required parameters for HX711 configuration");
     }
-#else
-    // Windows: parameters are optional since we're simulating
-    std::cout << "Loadcell: Running in SIMULATION MODE (Windows)" << std::endl;
-#endif
+      
   }
 
   // Implement this method if you want to provide additional information
@@ -223,12 +155,7 @@ public:
 
 private:
   // Define the fields that are used to store internal resources
-
-#ifdef PLATFORM_RASPBERRY_PI
-  unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor (Raspberry Pi only)
-#else
-  void* _hx = nullptr;  // Placeholder for Windows compilation
-#endif
+  unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor
 
   // Control flags
   bool _enabled = false;
@@ -236,7 +163,6 @@ private:
   bool _setting_offset = false;
 
   // Internal variables
-  float _debug_offset = 0.0;
   float _offset = 0.0;
   
 };

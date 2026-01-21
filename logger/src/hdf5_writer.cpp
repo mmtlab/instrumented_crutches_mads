@@ -55,72 +55,84 @@ public:
     // if topic is "command", process commands here
     if (topic == "command"){
 
-      if(input.contains("command")) {
+      if(!input.contains("command")) {
+        _error = "Logger: missing command in payload";
+        return return_type::error;
+      }
 
-        string action = input["command"];
-        if (action == "start" && input.contains("id") && _recording == false) {
-          _converter.close(); // Close any previously opened file
+      string action = input["command"];
 
-          int id = input["id"];
-          // Open a new file for recording
-          _filename = "_acq_" + to_string(id) + ".h5";
-          try {
-            _converter.open(_folder_path + _filename);
-          } catch (const std::exception &e) {
-            _error = "Error opening HDF5 file: " + string(e.what());
-            return return_type::error;
-          }
-          _recording = true;
-          std::cout << "Logger: Starting recording id: " << id << std::endl;
-
-          return return_type::success;
-          // other actions as needed
-        } else if (action == "stop" && _recording == true) {
-
-          std::cout << "Logger: Stopping recording " << endl;
-
-          try{
-            _converter.close(); // Close the current file
-          } catch (const H5::Exception &e) {
-            _error = "Error closing HDF5 file: " + string(e.getDetailMsg());
-            std::cerr << _error << std::endl;
-            return return_type::error;
-          }
-
-          // rename the file to indicate end of acquisition
-          string new_filename = _filename.substr(1, _filename.size() - 1); // remove leading underscore
-          if (std::rename((_folder_path + _filename).c_str(), (_folder_path + new_filename).c_str()) != 0) {
-            _error = "Error renaming file " + _filename + " to " + new_filename;
-            return return_type::warning;
-          }
-          _filename = _params["fallback_filename"].get<string>();
-
-          _recording = false;
-          std::cout << "Logger: Stopping recording"<< std::endl;
-          
-          return return_type::success;
-
+      if (action == "start") {
+        if (_recording) {
+          _error = "Logger: start requested while already recording";
+          return return_type::warning;
         }
-        else if (action == "set_offset") {
-          // No action needed for set_offset in HDF5 sink
-          return return_type::retry;
+        if (!input.contains("id")) {
+          _error = "Logger: start command requires an id";
+          return return_type::error;
         }
-        else {
-          _error = "Invalid command or state for command: " + action;
+
+        _converter.close(); // Close any previously opened file
+
+        int id = input["id"];
+        // Open a new file for recording
+        _filename = "_acq_" + to_string(id) + ".h5";
+        try {
+          _converter.open(_folder_path + _filename);
+        } catch (const std::exception &e) {
+          _error = "Error opening HDF5 file: " + string(e.what());
+          return return_type::error;
+        }
+        _recording = true;
+        std::cout << "Logger: Starting recording id: " << id << std::endl;
+
+        return return_type::success;
+        // other actions as needed
+      } else if (action == "stop") {
+        if (_recording == false) {
+          _error = "Logger: stop requested while not recording";
+          return return_type::warning;
+        }
+
+        std::cout << "Logger: Stopping recording " << endl;
+
+        try{
+          _converter.close(); // Close the current file
+        } catch (const H5::Exception &e) {
+          _error = "Error closing HDF5 file: " + string(e.getDetailMsg());
           std::cerr << _error << std::endl;
           return return_type::error;
         }
 
-      } 
-      else {
+        // rename the file to indicate end of acquisition
+        string new_filename = _filename.substr(1, _filename.size() - 1); // remove leading underscore
+        if (std::rename((_folder_path + _filename).c_str(), (_folder_path + new_filename).c_str()) != 0) {
+          _error = "Error renaming file " + _filename + " to " + new_filename;
+          return return_type::warning;
+        }
+        _filename = _params["fallback_filename"].get<string>();
+
+        _recording = false;
+        std::cout << "Logger: Stopping recording"<< std::endl;
+        
+        return return_type::success;
+
+      }
+      else if (action == "set_offset") {
+        // No action needed for set_offset in HDF5 sink
         return return_type::retry;
+      }
+      else {
+        _error = "Invalid command or state for command: " + action;
+        std::cerr << _error << std::endl;
+        return return_type::error;
       }
     }
 
     if (_recording && topic != "command") {
       if (std::find(_converter.groups().begin(), _converter.groups().end(), topic) == _converter.groups().end()) {
         _error = "Topic '" + topic + "' not found in keypaths.";
-        return return_type::retry;
+        return return_type::warning;
       }
       try {
         _converter.save_to_group(input, topic);

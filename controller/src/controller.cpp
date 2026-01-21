@@ -40,18 +40,62 @@ public:
 
   // Implement the actual functionality here
   return_type load_data(json const &input, string topic = "") override {
+    if (topic == "agent_event") {
+      _last_agent_event = input;
+      std::cout << "Controller: agent_event received -> " << input.dump() << std::endl;
+      return return_type::success;
+    }
     
     // if topic is "command", process commands here
-    if (topic == "ws_command" && input.contains("command")) {
+    if (topic == "ws_command") {
+      if (!input.contains("command")) {
+        _error = "Controller: missing command in ws_command payload";
+        return return_type::warning;
+      }
+
       string action = input["command"];
-      if ((action == "start" && _acquiring == false && input.contains("id")) || (action == "stop" && _acquiring == true) || (action == "set_offset" && _acquiring == false)) {
+
+      if (action == "start") {
+        if (_acquiring) {
+          _error = "Controller: start requested while already acquiring";
+          return return_type::warning;
+        }
+        if (!input.contains("id")) {
+          _error = "Controller: start command requires an id";
+          return return_type::error;
+        }
+
         _send_command = true;
         _command_to_send = action;
-        if (input.contains("id")){
-          _id_to_send = input.value("id", -1);
-        }
+        _id_to_send = input.value("id", -1);
         std::cout << "Controller: Sending command " << action << std::endl;
+        return return_type::success;
       }
+
+      if (action == "stop") {
+        if (_acquiring == false) {
+          _error = "Controller: stop requested while not acquiring";
+          return return_type::warning;
+        }
+        _send_command = true;
+        _command_to_send = action;
+        std::cout << "Controller: Sending command " << action << std::endl;
+        return return_type::success;
+      }
+
+      if (action == "set_offset") {
+        if (_acquiring) {
+          _error = "Controller: set_offset requested while acquiring";
+          return return_type::warning;
+        }
+        _send_command = true;
+        _command_to_send = action;
+        std::cout << "Controller: Sending command " << action << std::endl;
+        return return_type::success;
+      }
+
+      _error = "Controller: unknown command '" + action + "'";
+      return return_type::warning;
     }
 
     return return_type::success;
@@ -117,6 +161,7 @@ private:
   bool _send_command = false;
   string _command_to_send = "";
   int _id_to_send = -1;
+  json _last_agent_event;
 };
 
 
