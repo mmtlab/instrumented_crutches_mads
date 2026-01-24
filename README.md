@@ -80,7 +80,7 @@ scaling = 1.0
 enabled = true
 
 [controller]
-sub_topic = ["ws_command"]
+sub_topic = ["ws_command","agent_event"]
 pub_topic = "command"
 period = 10
 ```

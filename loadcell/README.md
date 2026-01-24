@@ -18,11 +18,11 @@ Currently, the supported platforms are:
 
 ## Installation
 
-Linux and MacOS:
+Raspberry:
 
 ```bash
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
-cmake --build build -j4
+cmake --build build
 sudo cmake --install build
 ```
 
@@ -30,8 +30,7 @@ Windows:
 
 ```powershell
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
-cmake --build build --config Release
-cmake --install build --config Release
+cmake --build build --config Release -t install
 ```
 
 

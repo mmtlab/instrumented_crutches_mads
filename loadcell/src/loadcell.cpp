@@ -67,8 +67,7 @@ public:
     // if topic is "command", process commands here
     if (topic == "command") {
       if (!input.contains("command")) {
-        _error = "Loadcell: missing command in payload";
-        return return_type::error;
+        return return_type::retry;
       }
 
       string action = input["command"];
