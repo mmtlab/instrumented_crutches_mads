@@ -159,10 +159,27 @@ public:
       }
     }
 
-    // If level indicates an issue, build message
-    bool is_issue = has_error_info || has_offset || (level == "error" || level == "warning" || level == "fatal" || level == "critical");
+    // Handle the shutdown/startup messages
+    bool has_shutdown = false;
+    if (input.contains("event") && input["event"].is_string() && input["event"].get<string>() == "shutdown") {
+      has_shutdown = true;
+      level = "critical";
+      
+      // Build shutdown message
+      std::ostringstream oss;
+      oss << "The agent " << source << " is shutting down.";
+      
+      message = oss.str();
+      
+      if (_debug) {
+        std::cout << "ErrorHandler: the agent " << source << " is shutting down." << std::endl;
+      }
+    }
 
-    if (is_issue) {
+    // If level indicates an issue, build message
+    bool is_relevant = has_error_info || has_offset || has_shutdown || (level == "error" || level == "warning" || level == "fatal" || level == "critical");
+
+    if (is_relevant) {
       if (_debug) {
         std::cout << "ErrorHandler: issue detected level='" << level << "' source='" << source << "'";
         if (!side.empty()) std::cout << " side='" << side << "'";
