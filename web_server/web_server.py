@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import random
 import subprocess
@@ -33,7 +34,33 @@ status_messages = []  # Buffer for status messages from error_handler
 status_task = None
 status_task_stop = None
 
-app = FastAPI(title="Instrumented Crutches")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize and shutdown resources using lifespan events."""
+    global status_task
+    success = init_mads_agent()
+    if success:
+        print("✓ MADS agent connected successfully")
+        status_task = asyncio.create_task(status_polling_loop())
+    else:
+        print("✗ Failed to initialize MADS agent - commands will fail", file=sys.stderr)
+    try:
+        yield
+    finally:
+        global mads_agent, status_task_stop
+        if status_task_stop is not None:
+            status_task_stop.set()
+        if status_task:
+            status_task.cancel()
+        if mads_agent:
+            try:
+                mads_agent.disconnect()
+                print("MADS agent disconnected")
+            except Exception as e:
+                print(f"Error disconnecting MADS agent: {e}", file=sys.stderr)
+
+
+app = FastAPI(title="Instrumented Crutches", lifespan=lifespan)
 
 # Data directory and index file
 DATA_DIR = Path("data")
@@ -98,6 +125,17 @@ def check_status_messages():
                     status_messages.pop(0)
     except Exception as e:
         print(f"Error receiving status message: {e}", file=sys.stderr)
+
+
+def build_status_message_key(payload: dict) -> str:
+    """Build a stable key for status messages (matches frontend)."""
+    source = payload.get("source", "system")
+    side = payload.get("side")
+    side_suffix = f" ({side})" if side else ""
+    text = payload.get("message") or payload.get("error") or payload.get("detail") or "Status update"
+    message_text = f"{source}{side_suffix}: {text}"
+    ts = payload.get("timestamp") or payload.get("timecode") or ""
+    return f"{message_text}::{ts}"
 
 
 async def status_polling_loop(poll_interval: float = 0.2):
@@ -802,32 +840,23 @@ async def get_status():
     }
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize MADS agent on startup"""
-    global status_task
-    success = init_mads_agent()
-    if success:
-        print("✓ MADS agent connected successfully")
-        status_task = asyncio.create_task(status_polling_loop())
-    else:
-        print("✗ Failed to initialize MADS agent - commands will fail", file=sys.stderr)
+@app.post("/status/dismiss")
+async def dismiss_status_message(body: dict):
+    """Remove a status message from the buffer so it won't be re-sent."""
+    global status_messages
+    message_key = body.get("message_key")
+    if not message_key:
+        raise HTTPException(status_code=400, detail="message_key is required")
+
+    before = len(status_messages)
+    status_messages = [m for m in status_messages if build_status_message_key(m) != message_key]
+    after = len(status_messages)
+    return {
+        "removed": before - after,
+        "remaining": after
+    }
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Disconnect MADS agent on shutdown"""
-    global mads_agent, status_task, status_task_stop
-    if status_task_stop is not None:
-        status_task_stop.set()
-    if status_task:
-        status_task.cancel()
-    if mads_agent:
-        try:
-            mads_agent.disconnect()
-            print("MADS agent disconnected")
-        except Exception as e:
-            print(f"Error disconnecting MADS agent: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

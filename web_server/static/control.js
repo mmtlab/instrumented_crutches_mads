@@ -25,6 +25,9 @@
         stopBtn: document.getElementById('stop-btn'),
         feedback: document.getElementById('feedback'),
         offsetBtn: document.getElementById('offset-btn'),
+        offsetLeft: document.getElementById('offset-left'),
+        offsetRight: document.getElementById('offset-right'),
+        offsetTime: document.getElementById('offset-time'),
         offsetFeedbackContainer: document.getElementById('offset-feedback-container'),
         startStopFeedbackContainer: document.getElementById('start-stop-feedback-container'),
         patientName: document.getElementById('patient-name'),
@@ -59,10 +62,36 @@
         }, 5000);
     }
     
+    // Track dismissed messages across refresh
+    const dismissedMessages = new Set(JSON.parse(localStorage.getItem('dismissedStatusMessages') || '[]'));
+
+    function saveDismissedMessages() {
+        localStorage.setItem('dismissedStatusMessages', JSON.stringify(Array.from(dismissedMessages).slice(-200)));
+    }
+
+    async function dismissServerMessage(messageKey) {
+        try {
+            await fetch(`${API_BASE}/status/dismiss`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message_key: messageKey })
+            });
+        } catch (error) {
+            console.warn('Dismiss status error:', error);
+        }
+    }
+
     // Add persistent error message to a container (with close button)
-    function addPersistentMessage(container, message, type) {
+    function addPersistentMessage(container, message, type, messageKey) {
+        if (messageKey && dismissedMessages.has(messageKey)) {
+            console.log(`✉️ Skipping dismissed message: ${messageKey}`);
+            return;
+        }
         const msgDiv = document.createElement('div');
         msgDiv.className = `feedback-message feedback-${type}`;
+        if (messageKey) {
+            msgDiv.dataset.messageKey = messageKey;
+        }
         
         const textSpan = document.createElement('span');
         textSpan.className = 'feedback-message-text';
@@ -75,6 +104,11 @@
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             msgDiv.remove();
+            if (messageKey) {
+                dismissedMessages.add(messageKey);
+                saveDismissedMessages();
+                dismissServerMessage(messageKey);
+            }
         });
         
         msgDiv.appendChild(textSpan);
@@ -87,6 +121,48 @@
     // Clear all messages from container
     function clearMessages(container) {
         container.innerHTML = '';
+    }
+
+    // Clear offset-related messages and dismiss on server
+    function clearOffsetMessages() {
+        const nodes = Array.from(elements.offsetFeedbackContainer.children);
+        nodes.forEach((node) => {
+            const messageKey = node.dataset ? node.dataset.messageKey : null;
+            if (messageKey) {
+                dismissServerMessage(messageKey);
+                dismissedMessages.add(messageKey);
+            }
+        });
+        saveDismissedMessages();
+        clearMessages(elements.offsetFeedbackContainer);
+    }
+    
+    // Update offset display values
+    function updateOffsetDisplay(message) {
+        // Parse message like: "Offset calibration: left=1.23, right=4.56, test_left=7.89, test_right=10.11"
+        const testLeftMatch = message.match(/test_left=([\d.-]+)/);
+        const testRightMatch = message.match(/test_right=([\d.-]+)/);
+        
+        if (testLeftMatch) {
+            const value = parseFloat(testLeftMatch[1]);
+                        const absValue = Math.abs(value);
+            elements.offsetLeft.textContent = value.toFixed(2);
+                    // Color red if > 10N, otherwise normal
+                    elements.offsetLeft.style.color = absValue > 10 ? '#ef4444' : 'inherit';
+        }
+        
+        if (testRightMatch) {
+            const value = parseFloat(testRightMatch[1]);
+                        const absValue = Math.abs(value);
+            elements.offsetRight.textContent = value.toFixed(2);
+                    // Color red if > 10N, otherwise normal
+                    elements.offsetRight.style.color = absValue > 10 ? '#ef4444' : 'inherit';
+        }
+        
+        // Update time with current time in HH:MM:SS format
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        elements.offsetTime.textContent = timeStr;
     }
     
     // Format time as MM:SS
@@ -282,10 +358,8 @@
     // Set offset
     async function setOffset() {
         try {
-            // Clear previous errors on calibrate
-            clearMessages(elements.offsetFeedbackContainer);
-            
-            showFeedback('Setting offset...', 'info');
+            // Clear previous offset errors on calibrate
+            clearOffsetMessages();
             
             const response = await fetch(`${API_BASE}/set_offset`, {
                 method: 'POST',
@@ -298,9 +372,7 @@
             
             const data = await response.json();
             
-            if (data.status === 'success') {
-                showFeedback(`✓ Offset set`, 'success');
-            } else {
+            if (data.status !== 'success') {
                 showFeedback(`⚠ ${data.message}`, 'warning');
             }
         } catch (error) {
@@ -378,6 +450,14 @@
                     
                     console.log(`✉️ Processing message: ${messageText} [${feedbackType}]`);
                     
+                    // Check if this is an offset calibration message
+                    const isOffsetCalibration = text?.toLowerCase().includes('offset calibration');
+                    if (isOffsetCalibration) {
+                        updateOffsetDisplay(text);
+                        // Don't show the message as feedback, only update the display
+                        return;
+                    }
+                    
                     // Determine routing: set_offset errors go to offset section, others to start/stop section
                     const isOffsetRelated = source?.toLowerCase().includes('set_offset') || 
                                            text?.toLowerCase().includes('set_offset') ||
@@ -388,7 +468,8 @@
                         const targetContainer = isOffsetRelated ? 
                             elements.offsetFeedbackContainer : 
                             elements.startStopFeedbackContainer;
-                        addPersistentMessage(targetContainer, messageText, feedbackType);
+                        const messageKey = `${messageText}::${msg.timestamp || msg.timecode || ''}`;
+                        addPersistentMessage(targetContainer, messageText, feedbackType, messageKey);
                         console.log(`✉️ Added persistent message to ${isOffsetRelated ? 'offset' : 'start/stop'} container`);
                     } else {
                         // Transient message (auto-close)

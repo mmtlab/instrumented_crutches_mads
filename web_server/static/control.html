@@ -73,7 +73,23 @@
 
         <div class="section">
             <h2>Calibration</h2>
-            <button id="offset-btn" class="btn">Calibrate</button>
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
+                <button id="offset-btn" class="btn">Calibrate</button>
+                <div style="display: flex; align-items: center; gap: 16px; font-size: 16px;">
+                    <strong>Test:</strong>
+                    <div style="display: flex; gap: 16px;">
+                        <div>
+                            <strong>Left:</strong> <span id="offset-left" style="font-family: monospace; color: #ef4444;">NA</span> N
+                        </div>
+                        <div>
+                            <strong>Right:</strong> <span id="offset-right" style="font-family: monospace; color: #ef4444;">NA</span> N
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 14px;">
+                        <strong>last update:</strong> <span id="offset-time">—</span>
+                    </div>
+                </div>
+            </div>
             <div id="offset-feedback-container" style="margin-top: 8px;"></div>
         </div>
 

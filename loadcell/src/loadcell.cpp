@@ -135,13 +135,7 @@ public:
 #else
 
       // Windows simulation mode
-      float test = 0.0;
-      if (_params["side"] == "right") // Simulate different readings for left and right
-        test = 140.0;
-      else
-        test = 40.0;
-      
-      out[_params["side"]] = test + _debug_offset + (rand() % 6 - 3) - _offset; // Simulated data with noise
+      out[_params["side"]] = _debug_offset + (rand() % 6 - 3) - _offset; // Simulated data with noise
 
 #endif
 
@@ -229,6 +223,8 @@ public:
     // Windows: parameters are optional since we're simulating
     std::cout << "Loadcell: Running in SIMULATION MODE (Windows)" << std::endl;
 #endif
+
+    _setting_offset = true; // Set offset at the beginning
   }
 
   // Implement this method if you want to provide additional information
