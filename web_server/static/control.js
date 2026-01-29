@@ -25,7 +25,8 @@
         stopBtn: document.getElementById('stop-btn'),
         feedback: document.getElementById('feedback'),
         offsetBtn: document.getElementById('offset-btn'),
-        offsetFeedback: document.getElementById('offset-feedback'),
+        offsetFeedbackContainer: document.getElementById('offset-feedback-container'),
+        startStopFeedbackContainer: document.getElementById('start-stop-feedback-container'),
         patientName: document.getElementById('patient-name'),
         heightCm: document.getElementById('height-cm'),
         weightKg: document.getElementById('weight-kg'),
@@ -56,6 +57,36 @@
         setTimeout(() => {
             elements.feedback.style.display = 'none';
         }, 5000);
+    }
+    
+    // Add persistent error message to a container (with close button)
+    function addPersistentMessage(container, message, type) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `feedback-message feedback-${type}`;
+        
+        const textSpan = document.createElement('span');
+        textSpan.className = 'feedback-message-text';
+        textSpan.textContent = message;
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'feedback-message-close';
+        closeBtn.innerHTML = '✕';
+        closeBtn.type = 'button';
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            msgDiv.remove();
+        });
+        
+        msgDiv.appendChild(textSpan);
+        msgDiv.appendChild(closeBtn);
+        container.appendChild(msgDiv);
+        
+        console.log(`✉️ Added persistent ${type} message to ${container.id}`);
+    }
+    
+    // Clear all messages from container
+    function clearMessages(container) {
+        container.innerHTML = '';
     }
     
     // Format time as MM:SS
@@ -130,6 +161,9 @@
     // Start acquisition
     async function startAcquisition() {
         try {
+            // Clear previous errors on start
+            clearMessages(elements.startStopFeedbackContainer);
+            
             showFeedback('Starting acquisition...', 'info');
             
             // Collect test configuration
@@ -182,6 +216,9 @@
     // Stop acquisition
     async function stopAcquisition() {
         try {
+            // Clear previous errors on stop
+            clearMessages(elements.startStopFeedbackContainer);
+            
             showFeedback('Stopping acquisition...', 'info');
             
             const response = await fetch(`${API_BASE}/stop`, {
@@ -245,7 +282,10 @@
     // Set offset
     async function setOffset() {
         try {
-            showFeedbackOffset('Setting offset...', 'info');
+            // Clear previous errors on calibrate
+            clearMessages(elements.offsetFeedbackContainer);
+            
+            showFeedback('Setting offset...', 'info');
             
             const response = await fetch(`${API_BASE}/set_offset`, {
                 method: 'POST',
@@ -259,27 +299,17 @@
             const data = await response.json();
             
             if (data.status === 'success') {
-                showFeedbackOffset(`✓ Offset set`, 'success');
+                showFeedback(`✓ Offset set`, 'success');
             } else {
-                showFeedbackOffset(`⚠ ${data.message}`, 'warning');
+                showFeedback(`⚠ ${data.message}`, 'warning');
             }
         } catch (error) {
             console.error('Set offset error:', error);
-            showFeedbackOffset('✗ Cannot set offset. Check connection.', 'error');
+            showFeedback('✗ Cannot set offset. Check connection.', 'error');
         }
     }
     
     // Show offset feedback message
-    function showFeedbackOffset(message, type) {
-        elements.offsetFeedback.textContent = message;
-        elements.offsetFeedback.className = `feedback feedback-${type}`;
-        elements.offsetFeedback.style.display = 'block';
-        
-        setTimeout(() => {
-            elements.offsetFeedback.style.display = 'none';
-        }, 5000);
-    }
-    
     // Load last test configuration
     async function loadLastTestConfig() {
         try {
@@ -314,6 +344,63 @@
     function toggleCommentsPanel() {
         elements.commentsContent.classList.toggle('collapsed');
         elements.toggleCommentsBtn.classList.toggle('collapsed');
+    }
+
+    let lastStatusCount = 0;
+    
+    async function checkNewStatusMessages() {
+        try {
+            const response = await fetch(`${API_BASE}/status`);
+            if (!response.ok) return;
+            const data = await response.json();
+            const messages = data.messages || [];
+            
+            console.log(`📥 Received ${messages.length} messages from /status (lastStatusCount: ${lastStatusCount})`);
+            
+            // Show only new messages as feedback
+            if (messages.length > lastStatusCount) {
+                const newMessages = messages.slice(lastStatusCount);
+                console.log(`📨 Showing ${newMessages.length} new messages:`, newMessages);
+                newMessages.forEach(msg => {
+                    const level = (msg.level || 'info').toString().toLowerCase();
+                    const source = msg.source || msg.name || 'system';
+                    const side = msg.side ? ` (${msg.side})` : '';
+                    const text = msg.message || msg.error || msg.detail || 'Status update';
+                    const messageText = `${source}${side}: ${text}`;
+                    
+                    // Map level to feedback type
+                    let feedbackType = 'info';
+                    if (level === 'error' || level === 'fatal' || level === 'critical') {
+                        feedbackType = 'error';
+                    } else if (level === 'warning') {
+                        feedbackType = 'warning';
+                    }
+                    
+                    console.log(`✉️ Processing message: ${messageText} [${feedbackType}]`);
+                    
+                    // Determine routing: set_offset errors go to offset section, others to start/stop section
+                    const isOffsetRelated = source?.toLowerCase().includes('set_offset') || 
+                                           text?.toLowerCase().includes('set_offset') ||
+                                           text?.toLowerCase().includes('calibrat');
+                    
+                    if (feedbackType === 'error' || feedbackType === 'warning') {
+                        // Persistent message (with close button)
+                        const targetContainer = isOffsetRelated ? 
+                            elements.offsetFeedbackContainer : 
+                            elements.startStopFeedbackContainer;
+                        addPersistentMessage(targetContainer, messageText, feedbackType);
+                        console.log(`✉️ Added persistent message to ${isOffsetRelated ? 'offset' : 'start/stop'} container`);
+                    } else {
+                        // Transient message (auto-close)
+                        showFeedback(messageText, feedbackType);
+                        console.log(`✉️ Showed auto-close feedback`);
+                    }
+                });
+            }
+            lastStatusCount = messages.length;
+        } catch (error) {
+            console.error('Check status error:', error);
+        }
     }
     
     // Show comment feedback message
@@ -507,5 +594,7 @@
     loadConditions();
     loadLastCondition();
     updateUI();
+    checkNewStatusMessages();
+    setInterval(checkNewStatusMessages, 2000);
     
 })();

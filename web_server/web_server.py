@@ -13,17 +13,104 @@ from datetime import datetime
 from pathlib import Path
 import io
 import csv
+import sys
+import os
 
 import h5py
 import numpy as np
 import uvicorn
 from dateutil import parser as date_parser
 
+# Initialize MADS agent
+mads_path = subprocess.check_output(["mads", "-p"], text=True).strip()
+sys.path.append(os.path.join(mads_path, 'python'))
+
+from mads_agent import Agent, EventType, MessageType, mads_version, mads_default_settings_uri
+
+# Global MADS agent instance
+mads_agent = None
+status_messages = []  # Buffer for status messages from error_handler
+status_task = None
+status_task_stop = None
+
 app = FastAPI(title="Instrumented Crutches")
 
 # Data directory and index file
 DATA_DIR = Path("data")
 INDEX_FILE = DATA_DIR / "index.json"
+
+
+def init_mads_agent():
+    """Initialize MADS agent connection"""
+    global mads_agent
+    try:
+        mads_agent = Agent("web_server", "tcp://localhost:9092")
+        mads_agent.set_id("web_server")
+        mads_agent.set_settings_timeout(2000)
+        if mads_agent.init() != 0:
+            print("Warning: Cannot contact MADS broker", file=sys.stderr)
+            return False
+        print(f"MADS agent initialized with settings: {mads_agent.settings()}")
+        mads_agent.connect()
+        # Subscribe to status topic to receive messages from error_handler
+        # mads_agent.subscribe("status") # subscribe() doesn't exist, it is handled by the sub_topic field in MADS settings (mads.ini file)
+        mads_agent.set_receive_timeout(100)  # 100ms timeout for non-blocking receive
+        return True
+    except Exception as e:
+        print(f"Error initializing MADS agent: {e}", file=sys.stderr)
+        return False
+
+
+def check_status_messages():
+    """Check for incoming status messages from error_handler (non-blocking)"""
+    global mads_agent, status_messages
+    if not mads_agent:
+        return
+    
+    try:
+        msg_type = mads_agent.receive()
+        if msg_type != MessageType.NONE:
+            topic, message = mads_agent.last_message()
+            
+            print(f"Received message on topic '{topic}': {message}")
+            if topic == "status":
+                # Extract status payload from nested structure
+                if isinstance(message, dict) and "status" in message:
+                    payload = message["status"]
+                elif isinstance(message, dict):
+                    payload = message
+                else:
+                    payload = {
+                        "timestamp": datetime.now().isoformat(),
+                        "level": "info",
+                        "message": str(message)
+                    }
+                
+                # Ensure timestamp exists
+                if isinstance(payload, dict) and "timestamp" not in payload:
+                    payload["timestamp"] = datetime.now().isoformat()
+                    
+                status_messages.append(payload)
+                print(f"✓ Status message added to buffer. Total messages: {len(status_messages)}")
+                print(f"✓ Payload: {payload}")
+                # Keep only last 100 messages
+                if len(status_messages) > 100:
+                    status_messages.pop(0)
+    except Exception as e:
+        print(f"Error receiving status message: {e}", file=sys.stderr)
+
+
+async def status_polling_loop(poll_interval: float = 0.2):
+    """Background task to poll status messages periodically."""
+    global status_task_stop
+    if status_task_stop is None:
+        status_task_stop = asyncio.Event()
+    try:
+        while not status_task_stop.is_set():
+            check_status_messages()
+            await asyncio.sleep(poll_interval)
+    except asyncio.CancelledError:
+        return
 
 
 def ensure_data_dir():
@@ -65,6 +152,12 @@ def data_file_path(acq_id: str) -> Path:
 
 
 def send_bridge_command(command: str, acq_id: str = None):
+    """Send command via MADS agent to ws_command topic"""
+    global mads_agent
+    
+    if not mads_agent:
+        return False, "MADS agent not initialized"
+    
     payload_dict = {"command": command}
     if acq_id:
         # Extract numeric ID from "acq_19" or "acq_0019" format
@@ -73,21 +166,12 @@ def send_bridge_command(command: str, acq_id: str = None):
             payload_dict["id"] = id_num
         except (IndexError, ValueError):
             payload_dict["id"] = acq_id
-    payload = json.dumps(payload_dict)
+    
     try:
-        result = subprocess.run(
-            ["mads-bridge", "-t", "ws_command", "-m", payload],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=True,
-        )
-        return True, (result.stdout.strip() or "ok")
-    except FileNotFoundError:
-        return False, "mads-bridge executable not found"
-    except subprocess.CalledProcessError as exc:
-        output = exc.stderr.strip() or exc.stdout.strip() or str(exc)
-        return False, output
+        # Publish message to ws_command topic
+        topic = "ws_command"
+        mads_agent.publish(topic, payload_dict)
+        return True, "ok"
     except Exception as exc:
         return False, str(exc)
 
@@ -311,7 +395,7 @@ async def stop_acquisition():
         save_index(acquisitions)
     
     current_acquisition_id = None
-    
+
     return {
         "status": "stopped",
         "acquisition_id": acquisition_id,
@@ -437,6 +521,7 @@ async def save_condition(condition_data: dict):
 @app.get("/acquisitions")
 async def list_acquisitions():
     """Return list of available acquisition ids."""
+    
     acquisition_list = [
         {
             "id": acq["id"],
@@ -699,6 +784,50 @@ async def download_info_csv(acquisition_id: str):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=info_{acquisition_id}.csv"}
     )
+
+
+@app.get("/status")
+async def get_status():
+    """Get recent status messages from error_handler"""
+    global status_messages
+    
+    # Check for new messages
+    check_status_messages()
+    
+    print(f"📤 /status endpoint called - returning {len(status_messages)} messages (last 20)")
+    
+    return {
+        "messages": status_messages[-20:],  # Return last 20 messages
+        "count": len(status_messages)
+    }
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize MADS agent on startup"""
+    global status_task
+    success = init_mads_agent()
+    if success:
+        print("✓ MADS agent connected successfully")
+        status_task = asyncio.create_task(status_polling_loop())
+    else:
+        print("✗ Failed to initialize MADS agent - commands will fail", file=sys.stderr)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Disconnect MADS agent on shutdown"""
+    global mads_agent, status_task, status_task_stop
+    if status_task_stop is not None:
+        status_task_stop.set()
+    if status_task:
+        status_task.cancel()
+    if mads_agent:
+        try:
+            mads_agent.disconnect()
+            print("MADS agent disconnected")
+        except Exception as e:
+            print(f"Error disconnecting MADS agent: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

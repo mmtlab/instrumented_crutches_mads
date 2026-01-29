@@ -40,6 +40,7 @@ public:
 
   // Implement the actual functionality here
   return_type load_data(json const &input, string topic = "") override {
+
     if (topic == "agent_event") {
       _last_agent_event = input;
       std::cout << "Controller: agent_event received -> " << input.dump() << std::endl;
@@ -84,10 +85,6 @@ public:
       }
 
       if (action == "set_offset") {
-        if (_acquiring) {
-          _error = "Controller: set_offset requested while acquiring";
-          return return_type::warning;
-        }
         _send_command = true;
         _command_to_send = action;
         std::cout << "Controller: Sending command " << action << std::endl;
@@ -122,6 +119,9 @@ public:
       // do nothing special for set_offset
 
       _send_command = false; // reset the flag
+    }
+    else {
+      return return_type::retry;
     }
 
     // This sets the agent_id field in the output json object, only when it is

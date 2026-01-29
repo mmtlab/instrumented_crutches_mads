@@ -74,26 +74,30 @@ public:
       if (action == "start") {
         if (_acquiring) {
           _error = "Loadcell: start requested while already acquiring";
+          std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
           return return_type::warning;
         }
         _acquiring = true;
-        std::cout << "Loadcell: Starting acquisition" << std::endl;
+        std::cout << std::endl << "Loadcell: Starting acquisition" << std::endl;
       } else if (action == "stop") {
         if (_acquiring == false) {
           _error = "Loadcell: stop requested while not acquiring";
+        std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
           return return_type::warning;
         }
         _acquiring = false;
-        std::cout << "Loadcell: Stopping acquisition" << std::endl;
+        std::cout << std::endl << "Loadcell: Stopping acquisition" << std::endl;
       } else if (action == "set_offset") {
         if (_acquiring) {
-          _error = "Loadcell: set_offset requested while acquiring";
-          return return_type::warning;
+          _error = "Loadcell: set_offset not allowed while acquiring, request ignored";
+        std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
+          return return_type::error;
         }
         _setting_offset = true;
-        std::cout << "Loadcell: Setting offset" << std::endl;
+        std::cout << std::endl << "Loadcell: Setting offset" << std::endl;
       } else {
         _error = "Loadcell: unknown command '" + action + "'";
+        std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
         return return_type::error;
       }
     }
@@ -105,6 +109,10 @@ public:
   // into the output json object
   return_type process(json &out) override {
     out.clear();
+
+    // Not valid states are handled in load_data, here we just process data
+    // Here we should have only valid states and errors related to reading the sensor
+
 
     // load the data as necessary and set the fields of the json out variable
     if (_acquiring) {
@@ -142,7 +150,15 @@ public:
 
       try {
         // Real hardware offset on Raspberry Pi
-        _offset = _hx->weight(40).getValue(Mass::Unit::N);
+        _offset = _hx->weight(20).getValue(Mass::Unit::N);
+        _setting_offset = false;
+
+        // test read after setting offset
+        auto offset_test = _hx->weight(20).getValue(Mass::Unit::N) - _offset;
+        
+        out["offset_" + _params["side"].get<string>()] = _offset;
+        out["offset_test_" + _params["side"].get<string>()] = offset_test;
+
       } catch (const std::exception &e) {
         _error = "Loadcell: Error reading from HX711 for offset: " + string(e.what());
         return return_type::warning;
@@ -150,9 +166,14 @@ public:
 #else
       // Windows simulation mode
       _offset = _debug_offset;
-#endif
       _setting_offset = false;
-      std::cout << "Loadcell: Offset set to " << _offset << std::endl;
+      
+      // test read after setting offset
+      auto offset_test = 0.0;
+
+      out["offset_" + _params["side"].get<string>()] = _offset;
+      out["offset_test_" + _params["side"].get<string>()] = offset_test;
+#endif
       
     } else {
       return return_type::retry;

@@ -1,4 +1,5 @@
 /controller/build/
+/error_handler/build/
 /logger/build/
 /loadcell/build/
 /web_server/data/

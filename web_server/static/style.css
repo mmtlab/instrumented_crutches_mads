@@ -239,6 +239,81 @@ h2 {
     color: var(--danger);
 }
 
+/* Status feed */
+.status-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.status-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+.status-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+}
+
+.status-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.status-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.status-level {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    background: #e2e8f0;
+    color: #334155;
+}
+
+.status-level.error,
+.status-level.critical,
+.status-level.fatal {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-level.warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-level.message,
+.status-level.info {
+    background: #e0f2fe;
+    color: #0c4a6e;
+}
+
+.status-message {
+    font-size: 14px;
+    color: var(--text);
+}
+
 /* Buttons */
 .btn {
     padding: 12px 20px;
@@ -378,6 +453,61 @@ textarea.input {
     background-color: #fee2e2;
     border-color: #ef4444;
     color: #991b1b;
+}
+
+/* Persistent error messages */
+.feedback-message {
+    margin-top: 8px;
+    padding: 12px 12px 12px 16px;
+    font-size: 14px;
+    border-left: 4px solid;
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.feedback-message-text {
+    flex: 1;
+}
+
+.feedback-message-close {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.feedback-message-close:hover {
+    opacity: 1;
+}
+
+.feedback-message.feedback-error {
+    background-color: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
+.feedback-message.feedback-warning {
+    background-color: #fef3c7;
+    border-color: #f59e0b;
+    color: #78350f;
+}
+
+.feedback-message.feedback-info {
+    background-color: #e0f2fe;
+    border-color: #0284c7;
+    color: #0c4a6e;
 }
 
 /* Charts */
