@@ -75,17 +75,24 @@
             <h2>Calibration</h2>
             <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
                 <button id="offset-btn" class="btn">Calibrate</button>
-                <div style="display: flex; align-items: center; gap: 16px; font-size: 16px;">
-                    <strong>Test:</strong>
-                    <div style="display: flex; gap: 16px;">
-                        <div>
-                            <strong>Left:</strong> <span id="offset-left" style="font-family: monospace; color: #ef4444;">NA</span> N
+                <div style="display: flex; align-items: center; gap: 20px; font-size: 14px;">
+                    <div style="display: flex; gap: 20px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <strong>Left:</strong>
+                            <div id="offset-left-indicator" class="offset-indicator offset-indicator-unknown">
+                                <span id="offset-left" style="font-weight: 600;">NA</span>
+                                <span style="font-size: 12px; font-weight: 600;">N</span>
+                            </div>
                         </div>
-                        <div>
-                            <strong>Right:</strong> <span id="offset-right" style="font-family: monospace; color: #ef4444;">NA</span> N
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <strong>Right:</strong>
+                            <div id="offset-right-indicator" class="offset-indicator offset-indicator-unknown">
+                                <span id="offset-right" style="font-weight: 600;">NA</span>
+                                <span style="font-size: 12px; font-weight: 600;">N</span>
+                            </div>
                         </div>
                     </div>
-                    <div style="color: #64748b; font-size: 14px;">
+                    <div style="color: #64748b; font-size: 13px;">
                         <strong>last update:</strong> <span id="offset-time">—</span>
                     </div>
                 </div>

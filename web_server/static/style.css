@@ -401,6 +401,36 @@ h2 {
     color: #991b1b;
 }
 
+/* Offset indicator */
+.offset-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid;
+    font-family: monospace;
+    font-size: 14px;
+}
+
+.offset-indicator-unknown {
+    background: #e2e8f0;
+    border-color: #cbd5f5;
+    color: #475569;
+}
+
+.offset-indicator-ok {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.offset-indicator-warning {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
 /* Buttons */
 .btn {
     padding: 12px 20px;

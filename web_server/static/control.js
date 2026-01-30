@@ -30,6 +30,8 @@
         offsetBtn: document.getElementById('offset-btn'),
         offsetLeft: document.getElementById('offset-left'),
         offsetRight: document.getElementById('offset-right'),
+        offsetLeftIndicator: document.getElementById('offset-left-indicator'),
+        offsetRightIndicator: document.getElementById('offset-right-indicator'),
         offsetTime: document.getElementById('offset-time'),
         offsetFeedbackContainer: document.getElementById('offset-feedback-container'),
         startStopFeedbackContainer: document.getElementById('start-stop-feedback-container'),
@@ -290,20 +292,28 @@
         const testLeftMatch = message.match(/test_left=([\d.-]+)/);
         const testRightMatch = message.match(/test_right=([\d.-]+)/);
         
+        const offsetClasses = ['offset-indicator-unknown', 'offset-indicator-ok', 'offset-indicator-warning'];
+        
+        // Only update left if test_left is present in the message
         if (testLeftMatch) {
             const value = parseFloat(testLeftMatch[1]);
-                        const absValue = Math.abs(value);
+            const absValue = Math.abs(value);
             elements.offsetLeft.textContent = value.toFixed(2);
-                    // Color red if > 10N, otherwise normal
-                    elements.offsetLeft.style.color = absValue > 10 ? '#ef4444' : 'inherit';
+            if (elements.offsetLeftIndicator) {
+                elements.offsetLeftIndicator.classList.remove(...offsetClasses);
+                elements.offsetLeftIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
+            }
         }
         
+        // Only update right if test_right is present in the message
         if (testRightMatch) {
             const value = parseFloat(testRightMatch[1]);
-                        const absValue = Math.abs(value);
+            const absValue = Math.abs(value);
             elements.offsetRight.textContent = value.toFixed(2);
-                    // Color red if > 10N, otherwise normal
-                    elements.offsetRight.style.color = absValue > 10 ? '#ef4444' : 'inherit';
+            if (elements.offsetRightIndicator) {
+                elements.offsetRightIndicator.classList.remove(...offsetClasses);
+                elements.offsetRightIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
+            }
         }
         
         // Update time with current time in HH:MM:SS format
