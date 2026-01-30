@@ -4,6 +4,9 @@
 (function() {
     'use strict';
     
+    // Configuration - which side is the master (only change on restart)
+    const masterSide = 'left';  // Can be 'left' or 'right' - requires restart to change
+    
     // API configuration
     const API_BASE = '';
     
@@ -41,6 +44,16 @@
         commentText: document.getElementById('comment-text'),
         saveCommentBtn: document.getElementById('save-comment-btn'),
         commentFeedback: document.getElementById('comment-feedback'),
+        tipLeft: document.getElementById('tip-left'),
+        tipRight: document.getElementById('tip-right'),
+        tipLeftState: document.getElementById('tip-left-state'),
+        tipRightState: document.getElementById('tip-right-state'),
+        statusController: document.getElementById('status-controller'),
+        statusControllerState: document.getElementById('status-controller-state'),
+        statusHdf5: document.getElementById('status-hdf5'),
+        statusHdf5State: document.getElementById('status-hdf5-state'),
+        toggleNodeStatusBtn: document.getElementById('toggle-node-status-btn'),
+        nodeStatusContent: document.getElementById('node-status-content'),
         conditionBtn: document.getElementById('condition-btn'),
         conditionsModal: document.getElementById('conditions-modal'),
         closeConditionsBtn: document.getElementById('close-conditions-btn'),
@@ -82,7 +95,7 @@
     }
 
     // Add persistent error message to a container (with close button)
-    function addPersistentMessage(container, message, type, messageKey) {
+    function addPersistentMessage(container, message, type, messageKey, meta = {}) {
         if (messageKey && dismissedMessages.has(messageKey)) {
             console.log(`✉️ Skipping dismissed message: ${messageKey}`);
             return;
@@ -91,6 +104,12 @@
         msgDiv.className = `feedback-message feedback-${type}`;
         if (messageKey) {
             msgDiv.dataset.messageKey = messageKey;
+        }
+        if (meta && typeof meta === 'object') {
+            if (meta.source) msgDiv.dataset.source = meta.source;
+            if (meta.side) msgDiv.dataset.side = meta.side;
+            if (meta.level) msgDiv.dataset.level = meta.level;
+            if (meta.text) msgDiv.dataset.text = meta.text;
         }
         
         const textSpan = document.createElement('span');
@@ -135,6 +154,134 @@
         });
         saveDismissedMessages();
         clearMessages(elements.offsetFeedbackContainer);
+    }
+
+    function removeShutdownMessagesForNode(source, side) {
+        const containers = [elements.startStopFeedbackContainer, elements.offsetFeedbackContainer].filter(Boolean);
+        const sourceBase = (source || '').toLowerCase().replace(/\.plugin$/, '');
+        
+        containers.forEach((container) => {
+            const nodes = Array.from(container.querySelectorAll('.feedback-message'));
+            nodes.forEach((node) => {
+                const nodeSource = (node.dataset.source || '').toLowerCase().replace(/\.plugin$/, '');
+                const nodeSide = (node.dataset.side || '').toLowerCase();
+                const nodeLevel = (node.dataset.level || '').toLowerCase();
+                const nodeText = (node.dataset.text || '').toLowerCase();
+
+                const sourceMatch = nodeSource && (nodeSource === sourceBase || nodeSource.includes(sourceBase) || sourceBase.includes(nodeSource));
+                const sideMatch = !side ? true : (!nodeSide || nodeSide === side.toLowerCase());
+                const looksLikeShutdown = nodeText.includes('shutdown') || nodeText.includes('shutting down');
+                const isCritical = nodeLevel === 'critical' || nodeLevel === 'fatal' || nodeLevel === 'error';
+
+                if (sourceMatch && sideMatch && (looksLikeShutdown || isCritical)) {
+                    const messageKey = node.dataset ? node.dataset.messageKey : null;
+                    if (messageKey) {
+                        dismissedMessages.add(messageKey);
+                        saveDismissedMessages();
+                        dismissServerMessage(messageKey);
+                    }
+                    node.remove();
+                }
+            });
+        });
+    }
+
+    const tipStatusClasses = ['node-status-unknown', 'node-status-live', 'node-status-dead'];
+
+    function setServiceStatus(serviceName, status) {
+        let indicator, stateLabel;
+        
+        if (serviceName === 'controller') {
+            indicator = elements.statusController;
+            stateLabel = elements.statusControllerState;
+        } else if (serviceName === 'hdf5_writer') {
+            indicator = elements.statusHdf5;
+            stateLabel = elements.statusHdf5State;
+        } else {
+            return;
+        }
+
+        if (!indicator || !stateLabel) return;
+
+        indicator.classList.remove(...tipStatusClasses);
+        if (status === 'live') {
+            indicator.classList.add('node-status-live');
+            stateLabel.textContent = 'Alive';
+        } else if (status === 'dead') {
+            indicator.classList.add('node-status-dead');
+            stateLabel.textContent = 'Dead';
+        } else {
+            indicator.classList.add('node-status-unknown');
+            stateLabel.textContent = 'Unknown';
+        }
+    }
+
+    function setTipStatus(side, status) {
+        const isLeft = side === 'left';
+        const indicator = isLeft ? elements.tipLeft : elements.tipRight;
+        const stateLabel = isLeft ? elements.tipLeftState : elements.tipRightState;
+
+        if (!indicator || !stateLabel) return;
+
+        indicator.classList.remove(...tipStatusClasses);
+        if (status === 'live') {
+            indicator.classList.add('node-status-live');
+            stateLabel.textContent = 'Alive';
+        } else if (status === 'dead') {
+            indicator.classList.add('node-status-dead');
+            stateLabel.textContent = 'Dead';
+        } else {
+            indicator.classList.add('node-status-unknown');
+            stateLabel.textContent = 'Unknown';
+        }
+    }
+
+    function getCrutchSideFromMessage(msg) {
+        const sideRaw = (msg.side || '').toString().toLowerCase();
+        if (sideRaw === 'left' || sideRaw === 'right') return sideRaw;
+
+        const sourceRaw = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString().toLowerCase();
+        if (sourceRaw.includes('loadcell_left')) return 'left';
+        if (sourceRaw.includes('loadcell_right')) return 'right';
+        return '';
+    }
+
+    function updateTipStatusFromMessage(msg) {
+        const side = getCrutchSideFromMessage(msg);
+        const level = (msg.level || '').toString().toLowerCase();
+        const text = (msg.message || '').toString().trim().toLowerCase();
+        const source = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString();
+
+        const isStartup = level === 'info' && text === 'startup';
+        const isShutdown = level === 'critical' && (text === 'shutdown' || text.includes('shutdown') || text.includes('shutting down'));
+
+        if (isStartup) {
+            // Remove shutdown messages for this source (with or without side)
+            removeShutdownMessagesForNode(source, side);
+            // Update tip status only if we have a side (loadcell)
+            if (side) {
+                setTipStatus(side, 'live');
+            }
+            // Update master services status
+            const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
+            if (sourceNorm === 'controller') {
+                setServiceStatus('controller', 'live');
+            } else if (sourceNorm === 'hdf5_writer') {
+                setServiceStatus('hdf5_writer', 'live');
+            }
+        } else if (isShutdown) {
+            // Update tip status only if we have a side (loadcell)
+            if (side) {
+                setTipStatus(side, 'dead');
+            }
+            // Update master services status
+            const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
+            if (sourceNorm === 'controller') {
+                setServiceStatus('controller', 'dead');
+            } else if (sourceNorm === 'hdf5_writer') {
+                setServiceStatus('hdf5_writer', 'dead');
+            }
+        }
     }
     
     // Update offset display values
@@ -418,6 +565,13 @@
         elements.toggleCommentsBtn.classList.toggle('collapsed');
     }
 
+    // Toggle node status panel
+    function toggleNodeStatusPanel() {
+        if (!elements.nodeStatusContent || !elements.toggleNodeStatusBtn) return;
+        elements.nodeStatusContent.classList.toggle('collapsed');
+        elements.toggleNodeStatusBtn.classList.toggle('collapsed');
+    }
+
     let lastStatusCount = 0;
     
     async function checkNewStatusMessages() {
@@ -439,6 +593,8 @@
                     const side = msg.side ? ` (${msg.side})` : '';
                     const text = msg.message || msg.error || msg.detail || 'Status update';
                     const messageText = `${source}${side}: ${text}`;
+
+                    updateTipStatusFromMessage(msg);
                     
                     // Map level to feedback type
                     let feedbackType = 'info';
@@ -469,7 +625,12 @@
                             elements.offsetFeedbackContainer : 
                             elements.startStopFeedbackContainer;
                         const messageKey = `${messageText}::${msg.timestamp || msg.timecode || ''}`;
-                        addPersistentMessage(targetContainer, messageText, feedbackType, messageKey);
+                        addPersistentMessage(targetContainer, messageText, feedbackType, messageKey, {
+                            source: source,
+                            side: msg.side || '',
+                            level: level,
+                            text: text
+                        });
                         console.log(`✉️ Added persistent message to ${isOffsetRelated ? 'offset' : 'start/stop'} container`);
                     } else {
                         // Transient message (auto-close)
@@ -648,6 +809,9 @@
     elements.offsetBtn.addEventListener('click', setOffset);
     elements.toggleConfigBtn.addEventListener('click', toggleConfigPanel);
     elements.toggleCommentsBtn.addEventListener('click', toggleCommentsPanel);
+    if (elements.toggleNodeStatusBtn) {
+        elements.toggleNodeStatusBtn.addEventListener('click', toggleNodeStatusPanel);
+    }
     elements.saveCommentBtn.addEventListener('click', saveComment);
     elements.conditionBtn.addEventListener('click', openConditionsModal);
     elements.closeConditionsBtn.addEventListener('click', closeConditionsModal);

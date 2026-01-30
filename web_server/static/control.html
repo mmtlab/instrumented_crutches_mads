@@ -107,6 +107,52 @@
             </div>
         </div>
 
+        <div class="section" id="node-status-section">
+            <div class="section-header">
+                <h2>Status</h2>
+                <button id="toggle-node-status-btn" class="toggle-btn" title="Collapse/Expand">+</button>
+            </div>
+            <div id="node-status-content" class="section-content">
+                <div class="node-status-grid">
+                    <div class="node-status-card">
+                        <div class="node-status-card-title">Left Crutch (Master)</div>
+                        <div class="node-status-item">
+                            <div class="node-status-item-label">Controller</div>
+                            <div id="status-controller" class="node-status-indicator node-status-unknown">
+                                <span class="node-status-indicator-name">controller</span>
+                                <span id="status-controller-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                        </div>
+                        <div class="node-status-item">
+                            <div class="node-status-item-label">Logger</div>
+                            <div id="status-hdf5" class="node-status-indicator node-status-unknown">
+                                <span class="node-status-indicator-name">hdf5_writer</span>
+                                <span id="status-hdf5-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                        </div>
+                        <div class="node-status-separator"></div>
+                        <div class="node-status-item">
+                            <div class="node-status-item-label">Tip</div>
+                            <div id="tip-left" class="node-status-indicator node-status-unknown">
+                                <span class="node-status-indicator-name">loadcell_left</span>
+                                <span id="tip-left-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="node-status-card">
+                        <div class="node-status-card-title">Right Crutch (Slave)</div>
+                        <div class="node-status-item">
+                            <div class="node-status-item-label">Tip</div>
+                            <div id="tip-right" class="node-status-indicator node-status-unknown">
+                                <span class="node-status-indicator-name">loadcell_right</span>
+                                <span id="tip-right-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="logo-panel">
             <img src="/static/unibs-logo-blue.png" alt="UNIBS">
             <img src="/static/mmtlab-logo-blue.png" alt="MMTLab">

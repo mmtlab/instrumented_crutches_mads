@@ -314,6 +314,93 @@ h2 {
     color: var(--text);
 }
 
+/* Node status panel */
+.node-status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.node-status-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.node-status-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.node-status-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.node-status-item-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.node-status-separator {
+    height: 1px;
+    background-color: var(--border);
+    margin: 8px 0;
+}
+
+.node-status-indicator {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 13px;
+}
+
+.node-status-indicator-name {
+    font-weight: 600;
+}
+
+.node-status-indicator-state {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.node-status-unknown {
+    background: #e2e8f0;
+    border-color: #cbd5f5;
+    color: #475569;
+}
+
+.node-status-live {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.node-status-dead {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
 /* Buttons */
 .btn {
     padding: 12px 20px;

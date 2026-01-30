@@ -159,7 +159,7 @@ public:
       }
     }
 
-    // Handle the shutdown/startup messages
+    // Handle the shutdown messages
     bool has_shutdown = false;
     if (input.contains("event") && input["event"].is_string() && input["event"].get<string>() == "shutdown") {
       has_shutdown = true;
@@ -167,7 +167,7 @@ public:
       
       // Build shutdown message
       std::ostringstream oss;
-      oss << "The agent " << source << " is shutting down.";
+      oss << "shutdown";
       
       message = oss.str();
       
@@ -176,8 +176,25 @@ public:
       }
     }
 
+    // Handle the startup messages
+    bool has_startup = false;
+    if (input.contains("event") && input["event"].is_string() && input["event"].get<string>() == "startup") {
+      has_startup = true;
+      level = "info";
+      
+      // Build startup message
+      std::ostringstream oss;
+      oss << "startup";
+      
+      message = oss.str();
+      
+      if (_debug) {
+        std::cout << "ErrorHandler: the agent " << source << " is starting up." << std::endl;
+      }
+    }
+
     // If level indicates an issue, build message
-    bool is_relevant = has_error_info || has_offset || has_shutdown || (level == "error" || level == "warning" || level == "fatal" || level == "critical");
+    bool is_relevant = has_error_info || has_offset || has_shutdown || has_startup || (level == "info" || level == "warning" || level == "error" || level == "fatal" || level == "critical");
 
     if (is_relevant) {
       if (_debug) {
