@@ -42,17 +42,27 @@ mads-broker -n wlan0
 
 CONTROLLER
 ```powershell
-mads-filter controller.plugin
+mads-filter controller.plugin -s tcp://10.42.0.1:9092
+```
+
+ERROR HANDLER
+```powershell
+mads-filter error_handler.plugin -s tcp://10.42.0.1:9092
 ```
 
 LOGGER
 ```powershell
-sudo mads-sink hdf5_writer.plugin
+sudo mads-sink hdf5_writer.plugin -s tcp://10.42.0.1:9092
 ```
 
-LOADCELL
+LOADCELL LEFT
 ```powershell
-mads-filter loadcell.plugin --dont-block -o side="left" -p10
+mads-filter loadcell.plugin -n loadcell_left --dont-block -s tcp://10.42.0.1:9092
+```
+
+LOADCELL RIGHT
+```powershell
+mads-filter loadcell.plugin -n loadcell_right --dont-block -s tcp://10.42.0.1:9092
 ```
 
 WEB SERVER
@@ -71,16 +81,37 @@ fallback_filename = "test.h5"
 keypaths = {"loadcell" = ["ts_right","ts_left","right","left"]}
 keypath_separator = "."
 
-[loadcell]
+[loadcell_left]
+sub_topic = ["command"]
+pub_topic = "loadcell"
+datapin = 6
+clockpin = 26
+scaling = 1.0
+period = 20
+enabled = true
+side = "left"
+
+[loadcell_right]
 sub_topic = ["command"]
 pub_topic = "loadcell"
 datapin = 6
 clockpin = 26
 scaling = 1.0
 enabled = true
+period = 20
+side = "right"
 
 [controller]
-sub_topic = ["ws_command","agent_event"]
+sub_topic = ["ws_command"]
 pub_topic = "command"
 period = 10
+
+[error_handler] 
+sub_topic = ["agent_event", "loadcell"]
+pub_topic = "status"
+debug = true
+
+[web_server]
+sub_topic = ["status"]
+pub_topic = "ws_command"
 ```

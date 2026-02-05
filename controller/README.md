@@ -22,7 +22,7 @@ Linux and MacOS:
 
 ```bash
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
-cmake --build build -j4
+cmake --build build
 sudo cmake --install build
 ```
 

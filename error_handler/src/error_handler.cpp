@@ -273,7 +273,7 @@ public:
     return return_type::success;
   }
   
-  void set_params(void const *params) override {
+  void set_params(const json &params) override {
     // Call the parent class method to set the common parameters 
     // (e.g. agent_id, etc.)
     Filter::set_params(params);
@@ -285,7 +285,7 @@ public:
 
     // then merge the defaults with the actually provided parameters
     // params needs to be cast to json
-    _params.merge_patch(*(json *)params);
+    _params.merge_patch(params);
     _max_pending = _params.value("max_pending", 100);
     _debug = _params.value("debug", false);
       
@@ -314,11 +314,7 @@ private:
     auto now = system_clock::now();
     auto t = system_clock::to_time_t(now);
     std::tm tm{};
-#if defined(_WIN32)
-    localtime_s(&tm, &t);
-#else
     localtime_r(&t, &tm);
-#endif
     std::ostringstream ss;
     ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
     return ss.str();
@@ -357,7 +353,7 @@ int main(int argc, char const *argv[])
   params["test"] = "value";
 
   // Set the parameters
-  plugin.set_params(&params);
+  plugin.set_params(params);
 
   // Set input data
   input["data"] = {

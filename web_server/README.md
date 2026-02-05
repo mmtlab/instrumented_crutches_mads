@@ -121,7 +121,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
+User=crutch
 WorkingDirectory=/home/pi/instrumented_crutches/web_server
 ExecStart=/home/pi/instrumented_crutches/web_server/venv/bin/python web_server.py
 Restart=on-failure

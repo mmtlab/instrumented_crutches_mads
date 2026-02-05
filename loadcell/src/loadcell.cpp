@@ -25,18 +25,9 @@
 #include <memory>          // For std::unique_ptr
 #include <chrono>          // For timing
 
-// Platform detection
-#ifdef __arm__
-  #define PLATFORM_RASPBERRY_PI
-#elif defined(_WIN32) || defined(_WIN64)
-  #define PLATFORM_WINDOWS
-#endif
-
-// Include HX711 only on Raspberry Pi
-#ifdef PLATFORM_RASPBERRY_PI
-  #include <hx711/common.h>  // Library for HX711
-  using namespace HX711;
-#endif
+// Include HX711 for Raspberry Pi
+#include <hx711/common.h>  // Library for HX711
+using namespace HX711;
 
 // Define the name of the plugin
 #ifndef PLUGIN_NAME
@@ -119,8 +110,6 @@ public:
       auto now = std::chrono::system_clock::now();
       out["ts_" + _params["side"].get<string>()] = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 
-#ifdef PLATFORM_RASPBERRY_PI
-
       try {
         // Real hardware acquisition on Raspberry Pi
         if (_hx && _enabled) {
@@ -132,16 +121,7 @@ public:
         return return_type::warning;
       }
       
-#else
-
-      // Windows simulation mode
-      out[_params["side"]] = _debug_offset + (rand() % 6 - 3) - _offset; // Simulated data with noise
-
-#endif
-
     } else if (_setting_offset && _acquiring == false) {
-#ifdef PLATFORM_RASPBERRY_PI
-
       try {
         // Real hardware offset on Raspberry Pi
         _offset = _hx->weight(20).getValue(Mass::Unit::N);
@@ -157,17 +137,6 @@ public:
         _error = "Loadcell: Error reading from HX711 for offset: " + string(e.what());
         return return_type::warning;
       }
-#else
-      // Windows simulation mode
-      _offset = _debug_offset;
-      _setting_offset = false;
-      
-      // test read after setting offset
-      auto offset_test = 0.0;
-
-      out["offset_" + _params["side"].get<string>()] = _offset;
-      out["offset_test_" + _params["side"].get<string>()] = offset_test;
-#endif
       
     } else {
       return return_type::retry;
@@ -179,7 +148,7 @@ public:
     return return_type::success;
   }
   
-  void set_params(void const *params) override {
+  void set_params(const json &params) override {
     // Call the parent class method to set the common parameters 
     // (e.g. agent_id, etc.)
     Filter::set_params(params);
@@ -187,11 +156,9 @@ public:
     // provide sensible defaults for the parameters by setting e.g.
     _params["side"] = "unknown";
 
-    _debug_offset = (rand() % 100 - 50); // Emulate some offset value
-
     // then merge the defaults with the actually provided parameters
     // params needs to be cast to json
-    _params.merge_patch(*(json *)params);
+    _params.merge_patch(params);
 
     if (_params.contains("side") && (_params["side"] == "left" || _params["side"] == "right")) {
       std::cout << "Loadcell: Side set to " << _params["side"] << std::endl;
@@ -201,7 +168,6 @@ public:
       throw std::runtime_error(_error);
     }
 
-#ifdef PLATFORM_RASPBERRY_PI
     // Read configuration parameters for the single HX711 sensor (Raspberry Pi only)
     if (_params.contains("datapin") && _params.contains("clockpin") && _params.contains("scaling")) {
       int dataPin = _params["datapin"].get<int>();
@@ -219,10 +185,6 @@ public:
       std::cerr << "Missing required parameters: datapin, clockpin, or scaling" << std::endl;
       throw std::invalid_argument("Missing required parameters for HX711 configuration");
     }
-#else
-    // Windows: parameters are optional since we're simulating
-    std::cout << "Loadcell: Running in SIMULATION MODE (Windows)" << std::endl;
-#endif
 
     _setting_offset = true; // Set offset at the beginning
   }
@@ -239,12 +201,7 @@ public:
 
 private:
   // Define the fields that are used to store internal resources
-
-#ifdef PLATFORM_RASPBERRY_PI
-  unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor (Raspberry Pi only)
-#else
-  void* _hx = nullptr;  // Placeholder for Windows compilation
-#endif
+  unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor
 
   // Control flags
   bool _enabled = false;
@@ -252,7 +209,6 @@ private:
   bool _setting_offset = false;
 
   // Internal variables
-  float _debug_offset = 0.0;
   float _offset = 0.0;
   
 };
@@ -289,7 +245,7 @@ int main(int argc, char const *argv[])
   params["test"] = "value";
 
   // Set the parameters
-  plugin.set_params(&params);
+  plugin.set_params(params);
 
   // Set input data
   input["data"] = {

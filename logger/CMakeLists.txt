@@ -92,13 +92,8 @@ include_directories(${HDF5_CPP_SOURCE_DIR}/src)
 include_directories(${HDF5_SOURCE_DIR}/src)
 include_directories(${HDF5_SOURCE_DIR}/src/H5FDsubfiling)
 include_directories(${HDF5_SRC_BINARY_DIR})
-if (WIN32)
-  link_directories(${HDF5_CPP_SRC_BINARY_DIR}/Release)
-  link_directories(${HDF5_SRC_BINARY_DIR}/Release)
-  else() 
-  link_directories(${HDF5_SRC_BINARY_DIR})
-  link_directories(${HDF5_CPP_SRC_BINARY_DIR})
-endif()
+link_directories(${HDF5_SRC_BINARY_DIR})
+link_directories(${HDF5_CPP_SRC_BINARY_DIR})
 
 # MACROS #######################################################################
 # Call: add_plugin(name [SRCS src1 src2 ...] [LIBS lib1 lib2 ...])
@@ -143,11 +138,7 @@ endif()
 include_directories(${json_SOURCE_DIR}/include)
 
 # These plugins are always build and use for testing
-if (WIN32)
-  add_plugin(hdf5_writer LIBS libhdf5_cpp libhdf5 shlwapi ws2_32)
-else()
-  add_plugin(hdf5_writer LIBS hdf5_cpp hdf5)
-endif()
+add_plugin(hdf5_writer LIBS hdf5_cpp hdf5)
 add_dependencies(hdf5_writer hdf5_cpp-static)
 
 list(APPEND TARGET_H5_TOOLS h5ls h5watch h5stat)

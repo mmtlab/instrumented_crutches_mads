@@ -128,6 +128,11 @@
 
     // Render force chart using Chart.js
     function renderForceChart(tsLeft, leftData, tsRight, rightData, yAxisLabel, hasBodyWeight) {
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js not loaded. Ensure /static/chart.umd.min.js is available.');
+            showFeedback('Chart.js non caricato. Verifica /static/chart.umd.min.js.', 'error');
+            return;
+        }
         // Destroy existing chart if any
         if (charts.force) {
             charts.force.destroy();
@@ -177,10 +182,12 @@
             }
         };
         
-        // If data is in % body weight, set fixed axis from -20 to 120
-        if (hasBodyWeight) {
+        // If data is in % body weight, force fixed axis from -20 to 120
+        const isPercentAxis = hasBodyWeight || (typeof yAxisLabel === 'string' && yAxisLabel.includes('%'));
+        if (isPercentAxis) {
             yAxisConfig.min = -20;
             yAxisConfig.max = 120;
+            yAxisConfig.grace = 0;
         } else {
             yAxisConfig.beginAtZero = true;
         }
@@ -301,6 +308,11 @@
     
     // Render PWB chart
     function renderPWBChart(tsLeft, leftData, tsRight, rightData) {
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js not loaded. Ensure /static/chart.umd.min.js is available.');
+            showFeedback('Chart.js non caricato. Verifica /static/chart.umd.min.js.', 'error');
+            return;
+        }
         // Destroy existing chart if any
         if (charts.pwb) {
             charts.pwb.destroy();
@@ -364,7 +376,8 @@
                             text: 'PWB (% Body Weight)'
                         },
                         min: -20,
-                        max: 120
+                        max: 120,
+                        grace: 0
                     }
                 },
                 interaction: {

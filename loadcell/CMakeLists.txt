@@ -39,14 +39,9 @@ endif()
 # DEPENDENCIES #################################################################
 include(FetchContent)
 
-# Platform detection
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm" OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-  set(PLATFORM_RASPBERRY_PI TRUE)
-  message(STATUS "Detected Raspberry Pi platform (ARM processor)")
-else()
-  set(PLATFORM_WINDOWS TRUE)
-  message(STATUS "Detected Windows/Desktop platform")
-endif()
+# Platform detection - Raspberry Pi only
+set(PLATFORM_RASPBERRY_PI TRUE)
+message(STATUS "Building for Raspberry Pi platform")
 
 # pugg is for the plugin system
 FetchContent_Declare(pugg 
@@ -67,7 +62,7 @@ FetchContent_MakeAvailable(pugg json)
 
 FetchContent_Populate(plugin 
   GIT_REPOSITORY https://github.com/pbosetti/mads_plugin.git
-  GIT_TAG        v1.3.5
+  GIT_TAG        HEAD
   GIT_SHALLOW    TRUE
   SUBBUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/plugin-subbuild
   SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/plugin-src
@@ -121,11 +116,7 @@ include_directories(${json_SOURCE_DIR}/include)
 
 
 # lgpio and hx711 libraries for Raspberry Pi must be already installed on the system
-if(PLATFORM_RASPBERRY_PI)
-  add_plugin(loadcell LIBS lgpio hx711)
-else()
-  add_plugin(loadcell)
-endif()
+add_plugin(loadcell LIBS lgpio hx711)
 
 
 
