@@ -1,5 +1,6 @@
 /controller/build/
-/error_handler/build/
+/status_handler/build/
 /logger/build/
-/loadcell/build/
+/hdf5_writer/build/
+/tip_loadcell/build/
 /web_server/data/

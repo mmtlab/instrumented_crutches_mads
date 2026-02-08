@@ -189,7 +189,7 @@ def data_file_path(acq_id: str) -> Path:
     return DATA_DIR / f"{acq_id}.h5"
 
 
-def send_bridge_command(command: str, acq_id: str = None):
+def send_mads_command(command: str, acq_id: str = None):
     """Send command via MADS agent to ws_command topic"""
     global mads_agent
     
@@ -214,9 +214,9 @@ def send_bridge_command(command: str, acq_id: str = None):
         return False, str(exc)
 
 
-async def send_bridge_command_async(command: str, acq_id: str = None):
+async def send_mads_command_async(command: str, acq_id: str = None):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, send_bridge_command, command, acq_id)
+    return await loop.run_in_executor(None, send_mads_command, command, acq_id)
 
 
 def read_hdf5_data(file_path: Path):
@@ -363,11 +363,11 @@ async def start_acquisition(test_config: dict = None):
     acquisition_id = f"acq_{next_id}"
     next_id += 1
     
-    success, bridge_output = await send_bridge_command_async("start", acquisition_id)
+    success, mads_output = await send_mads_command_async("start", acquisition_id)
     if not success:
         return {
             "status": "error",
-            "message": f"Bridge start failed: {bridge_output}"
+            "message": f"mads start failed: {mads_output}"
         }
     
     # Create acquisition record with test configuration
@@ -416,11 +416,11 @@ async def stop_acquisition():
             "message": "No acquisition running"
         }
     
-    success, bridge_output = await send_bridge_command_async("stop", current_acquisition_id)
+    success, mads_output = await send_mads_command_async("stop", current_acquisition_id)
     if not success:
         return {
             "status": "error",
-            "message": f"Bridge stop failed: {bridge_output}"
+            "message": f"mads stop failed: {mads_output}"
         }
     
     # Update acquisition record
@@ -443,13 +443,13 @@ async def stop_acquisition():
 
 @app.post("/set_offset")
 async def set_offset():
-    """Send set_offset command via bridge."""
+    """Send set_offset command via mads."""
     try:
-        success, bridge_output = await send_bridge_command_async("set_offset")
+        success, mads_output = await send_mads_command_async("set_offset")
         if not success:
             return {
                 "status": "error",
-                "message": f"Bridge command failed: {bridge_output}"
+                "message": f"mads command failed: {mads_output}"
             }
         
         return {
