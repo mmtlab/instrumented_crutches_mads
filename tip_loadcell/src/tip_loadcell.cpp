@@ -23,6 +23,7 @@
 
 // other includes as needed here
 #include <memory>          // For std::unique_ptr
+#include <chrono>          // For time handling
 
 // Include HX711 for Raspberry Pi
 #include <hx711/common.h>  // Library for HX711
@@ -106,13 +107,11 @@ public:
 
       try {
         if (_hx && _enabled) {
+          auto time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
           double loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
 
-          // always fill both left and right fields in the output json
-          // if the side is left, fill the right field with NaN, and vice versa
-          // It is important to always fill both fields to avoid issues in the h5 file since the timestamp field is shared and always logged 
           out["force"][_side] = loadCellValue - _offset;
-          out["force"][_side == "left" ? "right" : "left"] = NaN; 
+          out["time"][_side] = time; 
 
         }
       } catch (const std::exception &e) {

@@ -1,30 +1,29 @@
-Aggiungi stand up e down alle condizioni 
 
-Aggiungi feedback della condizione selezionata 
-
-Aggiungi non valida ultima cond
-
-Devo capire quando finisce la condizione e non ci sono momenti di attesa. Oppure metto sempre balancing
+Devo capire quando finisce la condizione e non ci sono momenti di attesa. Oppure metto sempre balancing. 
+Quando è fermo analizzare l’equilibrio.
+RICHIEDO A PAOLO DI PREMERE SEMPRE BALANCING (già lo faceva)
 
 C’è un beep dell’esoscheletro a partenza e fine
-
-Quando è fermo analizzare l’equilibrio 
-
-Metti i colori delle condizioni per categoria
-
 Se non ci pensa e parla va. Valutazione dell’attività verbale in futuro? 
-
-Non c’e stand up e down quindi abbiamo usato stair down up
-
-Assegnare id al paziente e non mettere il nome. Assegnare la sessione e non mettere il nome. Assegnare la run ad ogni start
+IN FUTURO PENSIAMO DI ANALIZZARE L'AUDIO DEI PUPIL
 
 Gestire visualizzazione e download di file pesanti
 
-cercare l'ultima acquisizione dai nomi e non dal numero dei file nella cartella (cosa succede se elimino un file?)
+Gestire il lancio del service dell'interfaccia e poi dell'error_handler prima degli altri nodi OPPURE All'avvio del web_server (o quando serve) gli agenti devono mandare un messaggio del proprio stato nel topic di pubblicazione per dire che va tutto bene. Status_handler deve gestirli e mandarli in status 
 
-Gestire il lancio del service dell'interfaccia e poi dell'error_handler prima degli altri nodi
+Questo per gestire i service all'avvio
+[Unit]
+Description=Service Controller/Loadcell ecc
+After=SERVICE-STATUS_HANDLER.service
 
-Spostare il feedback del master a seconda di chi è il master
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/local/bin/Service Controller/Loadcell
+
+[Install]
+WantedBy=multi-user.target
+
 
 Aggiungere recording pupil neon con la possibilità di abilitarlo o meno
 - quando non sto ancora acquisendo lo connetto

@@ -15,7 +15,10 @@
     
     // DOM elements
     const elements = {
+        subjectSelect: document.getElementById('subject-select'),
+        sessionSelect: document.getElementById('session-select'),
         acquisitionSelect: document.getElementById('acquisition-select'),
+        showBtn: document.getElementById('show-btn'),
         feedback: document.getElementById('feedback'),
         forceCanvas: document.getElementById('force-chart'),
         toggleChartBtn: document.getElementById('toggle-chart-btn'),
@@ -24,6 +27,9 @@
         togglePwbBtn: document.getElementById('toggle-pwb-btn'),
         pwbContent: document.getElementById('pwb-content')
     };
+    
+    // Store all acquisitions for filtering
+    let allAcquisitions = [];
     
     // Show feedback message
     function showFeedback(message, type) {
@@ -45,39 +51,186 @@
                 throw new Error(`Server error: ${response.status}`);
             }
             
-                const data = await response.json();
+            const data = await response.json();
+            allAcquisitions = data.acquisitions || [];
             
-            // Clear existing options (except first)
-            elements.acquisitionSelect.innerHTML = '<option value="">-- Choose a recording --</option>';
-            
-            if (data.acquisitions.length === 0) {
+            if (allAcquisitions.length === 0) {
                 showFeedback('No recordings yet. Record some data first.', 'info');
                 return;
             }
             
-            // Populate dropdown with acquisitions (newest first)
-            const sortedAcqs = [...data.acquisitions].reverse();
-            sortedAcqs.forEach(acq => {
-                const option = document.createElement('option');
-                option.value = acq.id;
-                const num = acq.id.replace('acq_', '');
-                const statusText = acq.status === 'completed' ? 'finished' : acq.status;
-                option.textContent = `Recording #${num} (${statusText})`;
-                elements.acquisitionSelect.appendChild(option);
-            });
+            // Get the last acquisition to auto-select subject, session and recording
+            const sortedAcqs = [...allAcquisitions].sort((a, b) => 
+                (b.start_time || '').localeCompare(a.start_time || '')
+            );
+            const lastAcq = sortedAcqs[0];
+            const lastSubjectId = lastAcq?.test_config?.subject_id;
+            const lastSessionId = lastAcq?.test_config?.session_id;
+            const lastAcqId = lastAcq?.id;
             
-            // Auto-select and load the most recent acquisition (first in reversed list)
-            if (sortedAcqs.length > 0) {
-                const mostRecentId = sortedAcqs[0].id;
-                elements.acquisitionSelect.value = mostRecentId;
-                // Load the most recent acquisition automatically
-                await loadAcquisitionData();
-            } else {
-                showFeedback('No recordings available', 'info');
-            }
+            // Load subjects
+            await loadSubjects(lastSubjectId, lastSessionId, lastAcqId);
+            
         } catch (error) {
             console.error('Load acquisitions error:', error);
             showFeedback('Cannot load recordings. Check connection.', 'error');
+        }
+    }
+    
+    // Load subjects and populate subject dropdown
+    async function loadSubjects(defaultSubjectId = null, defaultSessionId = null, defaultAcqId = null) {
+        try {
+            const response = await fetch(`${API_BASE}/subjects`);
+            
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            // Clear existing options
+            elements.subjectSelect.innerHTML = '<option value="">-- Select Subject --</option>';
+            
+            if (Object.keys(data.subjects).length === 0) {
+                showFeedback('No subjects found. Record data with a subject ID first.', 'info');
+                return;
+            }
+            
+            // Sort subject IDs numerically
+            const sortedSubjectIds = Object.keys(data.subjects).map(Number).sort((a, b) => a - b);
+            
+            // Populate subject dropdown
+            sortedSubjectIds.forEach(subjectId => {
+                const option = document.createElement('option');
+                option.value = subjectId;
+                option.textContent = `Subject ${subjectId}`;
+                elements.subjectSelect.appendChild(option);
+            });
+            
+            // Auto-select last subject if provided
+            if (defaultSubjectId) {
+                elements.subjectSelect.value = defaultSubjectId;
+                await loadSessionsForSubject(defaultSubjectId, defaultSessionId, defaultAcqId);
+            }
+            
+        } catch (error) {
+            console.error('Load subjects error:', error);
+            showFeedback('Cannot load subjects. Check connection.', 'error');
+        }
+    }
+    
+    // Load sessions for selected subject
+    async function loadSessionsForSubject(subjectId = null, defaultSessionId = null, defaultAcqId = null) {
+        const selectedSubjectId = subjectId || elements.subjectSelect.value;
+        
+        if (!selectedSubjectId) {
+            elements.sessionSelect.innerHTML = '<option value="">-- Select Subject First --</option>';
+            elements.sessionSelect.disabled = true;
+            elements.acquisitionSelect.innerHTML = '<option value="">-- Select Session First --</option>';
+            elements.acquisitionSelect.disabled = true;
+            elements.showBtn.disabled = true;
+            return;
+        }
+        
+        // Get unique sessions for this subject from allAcquisitions
+        const sessionsSet = new Set();
+        allAcquisitions.forEach(acq => {
+            const testConfig = acq.test_config || {};
+            if (testConfig.subject_id == selectedSubjectId) {
+                const sessionId = testConfig.session_id;
+                if (sessionId !== null && sessionId !== undefined) {
+                    sessionsSet.add(sessionId);
+                }
+            }
+        });
+        
+        const sessions = Array.from(sessionsSet).sort((a, b) => a - b);
+        
+        // Clear and update session dropdown
+        elements.sessionSelect.innerHTML = '<option value="">-- Select Session --</option>';
+        elements.sessionSelect.disabled = false;
+        
+        if (sessions.length === 0) {
+            showFeedback(`No sessions found for Subject ${selectedSubjectId}`, 'warning');
+            elements.acquisitionSelect.innerHTML = '<option value="">-- Select Session First --</option>';
+            elements.acquisitionSelect.disabled = true;
+            elements.showBtn.disabled = true;
+            return;
+        }
+        
+        // Populate session dropdown
+        sessions.forEach(sessionId => {
+            const option = document.createElement('option');
+            option.value = sessionId;
+            option.textContent = `Session ${sessionId}`;
+            elements.sessionSelect.appendChild(option);
+        });
+        
+        // Auto-select default session if provided
+        if (defaultSessionId) {
+            elements.sessionSelect.value = defaultSessionId;
+            await loadAcquisitionsForSession(selectedSubjectId, defaultSessionId, defaultAcqId);
+        } else if (sessions.length > 0) {
+            // Select the first session
+            elements.sessionSelect.value = sessions[0];
+            await loadAcquisitionsForSession(selectedSubjectId, sessions[0]);
+        }
+    }
+    
+    // Load acquisitions for selected subject and session
+    async function loadAcquisitionsForSession(subjectId = null, sessionId = null, defaultAcqId = null) {
+        const selectedSubjectId = subjectId || elements.subjectSelect.value;
+        const selectedSessionId = sessionId || elements.sessionSelect.value;
+        
+        if (!selectedSubjectId || !selectedSessionId) {
+            elements.acquisitionSelect.innerHTML = '<option value="">-- Select Session First --</option>';
+            elements.acquisitionSelect.disabled = true;
+            elements.showBtn.disabled = true;
+            return;
+        }
+        
+        // Filter acquisitions for this subject and session
+        const acquisitions = allAcquisitions.filter(acq => {
+            const testConfig = acq.test_config || {};
+            return testConfig.subject_id == selectedSubjectId && testConfig.session_id == selectedSessionId;
+        });
+        
+        // Sort by start_time descending (newest first)
+        acquisitions.sort((a, b) => {
+            const timeA = new Date(a.start_time).getTime();
+            const timeB = new Date(b.start_time).getTime();
+            return timeB - timeA;
+        });
+        
+        const acqIds = acquisitions.map(acq => acq.id);
+        
+        // Clear and enable acquisition dropdown
+        elements.acquisitionSelect.innerHTML = '<option value="">-- Select Recording --</option>';
+        elements.acquisitionSelect.disabled = false;
+        
+        if (acqIds.length === 0) {
+            showFeedback(`No recordings found for Subject ${selectedSubjectId}, Session ${selectedSessionId}`, 'warning');
+            elements.showBtn.disabled = true;
+            return;
+        }
+        
+        // Populate acquisition dropdown
+        acqIds.forEach(acqId => {
+            const option = document.createElement('option');
+            option.value = acqId;
+            const num = acqId.replace('acq_', '');
+            option.textContent = `Recording #${num}`;
+            elements.acquisitionSelect.appendChild(option);
+        });
+        
+        // Auto-select default acquisition if provided
+        if (defaultAcqId && acqIds.includes(defaultAcqId)) {
+            elements.acquisitionSelect.value = defaultAcqId;
+            elements.showBtn.disabled = false;
+        } else if (acqIds.length > 0) {
+            // Select the first (most recent) acquisition
+            elements.acquisitionSelect.value = acqIds[0];
+            elements.showBtn.disabled = false;
         }
     }
 
@@ -401,8 +554,25 @@
         elements.togglePwbBtn.classList.toggle('collapsed');
     }
     
-    // Auto-load data when acquisition is selected
+    // Event listeners
+    
+    // Subject selection changed - load sessions for that subject
+    elements.subjectSelect.addEventListener('change', () => {
+        loadSessionsForSubject();
+    });
+    
+    // Session selection changed - load acquisitions for that session
+    elements.sessionSelect.addEventListener('change', () => {
+        loadAcquisitionsForSession();
+    });
+    
+    // Acquisition selection changed - enable/disable show button
     elements.acquisitionSelect.addEventListener('change', () => {
+        elements.showBtn.disabled = !elements.acquisitionSelect.value;
+    });
+    
+    // Show button clicked - load and display data
+    elements.showBtn.addEventListener('click', () => {
         if (elements.acquisitionSelect.value) {
             loadAcquisitionData();
         }

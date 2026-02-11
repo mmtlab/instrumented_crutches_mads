@@ -162,39 +162,22 @@ public:
 
     // Handle offset messages from loadcell topic
     bool has_offset = false;
-    if (input.contains("offset_left") || input.contains("offset_right") || 
-        input.contains("offset_test_left") || input.contains("offset_test_right")) {
+    if (input.contains("offset") && input.contains("offset_test")) {
       has_offset = true;
       level = "warning";
+      side = "unknown";
       
+      if (input["offset"].contains("left") && input["offset_test"].contains("left")) {
+        side = "left";
+      } else if (input["offset"].contains("right") && input["offset_test"].contains("right")) {
+        side = "right";
+      }
+
       // Build offset message
       std::ostringstream oss;
-      oss << "Offset calibration: ";
-      bool first = true;
-      
-      if (input.contains("offset_left")) {
-        if (!first) oss << ", ";
-        oss << "left=" << input["offset_left"];
-        first = false;
-      }
-      if (input.contains("offset_right")) {
-        if (!first) oss << ", ";
-        oss << "right=" << input["offset_right"];
-        first = false;
-      }
-      if (input.contains("offset_test_left")) {
-        if (!first) oss << ", ";
-        oss << "test_left=" << input["offset_test_left"];
-        first = false;
-      }
-      if (input.contains("offset_test_right")) {
-        if (!first) oss << ", ";
-        oss << "test_right=" << input["offset_test_right"];
-        first = false;
-      }
+      oss << "offset = " << input["offset"][side] << " N, test = " << input["offset_test"][side] << " N";
       
       message = oss.str();
-      
       if (_debug) {
         std::cout << "StatusHandler: offset detected topic='" << topic << "' message='" << message << "'" << std::endl;
       }
@@ -205,7 +188,7 @@ public:
     if (input.contains("pupil_neon_connected") || input.contains("pupil_neon_connection_error")) {
       has_neon_info = true;
 
-      // Build offset message
+      // Build neon info message
       std::ostringstream oss;
       oss  << (input.value("pupil_neon_connected", false) ? "" : "=not connected");
 
@@ -344,7 +327,11 @@ private:
     auto now = system_clock::now();
     auto t = system_clock::to_time_t(now);
     std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
     localtime_r(&t, &tm);
+#endif
     std::ostringstream ss;
     ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
     return ss.str();

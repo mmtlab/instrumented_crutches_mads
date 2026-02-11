@@ -35,7 +35,8 @@
         offsetTime: document.getElementById('offset-time'),
         offsetFeedbackContainer: document.getElementById('offset-feedback-container'),
         startStopFeedbackContainer: document.getElementById('start-stop-feedback-container'),
-        patientName: document.getElementById('patient-name'),
+        subjectId: document.getElementById('subject-id'),
+        sessionId: document.getElementById('session-id'),
         heightCm: document.getElementById('height-cm'),
         weightKg: document.getElementById('weight-kg'),
         crutchHeight: document.getElementById('crutch-height'),
@@ -287,33 +288,40 @@
     }
     
     // Update offset display values
-    function updateOffsetDisplay(message) {
-        // Parse message like: "Offset calibration: left=1.23, right=4.56, test_left=7.89, test_right=10.11"
-        const testLeftMatch = message.match(/test_left=([\d.-]+)/);
-        const testRightMatch = message.match(/test_right=([\d.-]+)/);
+    function updateOffsetDisplay(message, side) {
+        // Parse message like: "offset = 50 N, test = 5 N"
+        const offsetMatch = message.match(/offset\s*=\s*([-\d.]+)/i);
+        const testMatch = message.match(/test\s*=\s*([-\d.]+)/i);
+        const offsetValue = offsetMatch ? parseFloat(offsetMatch[1]) : null;
+        const testValue = testMatch ? parseFloat(testMatch[1]) : null;
         
         const offsetClasses = ['offset-indicator-unknown', 'offset-indicator-ok', 'offset-indicator-warning'];
+        const targetSide = (side || '').toLowerCase();
         
-        // Only update left if test_left is present in the message
-        if (testLeftMatch) {
-            const value = parseFloat(testLeftMatch[1]);
-            const absValue = Math.abs(value);
-            elements.offsetLeft.textContent = value.toFixed(2);
-            if (elements.offsetLeftIndicator) {
-                elements.offsetLeftIndicator.classList.remove(...offsetClasses);
-                elements.offsetLeftIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
+        const updateSide = (which) => {
+            const value = testValue !== null ? testValue : offsetValue;
+            if (value === null || Number.isNaN(value)) return;
+            const absValue = Math.abs(testValue !== null ? testValue : value);
+            if (which === 'left') {
+                elements.offsetLeft.textContent = value.toFixed(2);
+                if (elements.offsetLeftIndicator) {
+                    elements.offsetLeftIndicator.classList.remove(...offsetClasses);
+                    elements.offsetLeftIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
+                }
+            } else if (which === 'right') {
+                elements.offsetRight.textContent = value.toFixed(2);
+                if (elements.offsetRightIndicator) {
+                    elements.offsetRightIndicator.classList.remove(...offsetClasses);
+                    elements.offsetRightIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
+                }
             }
-        }
+        };
         
-        // Only update right if test_right is present in the message
-        if (testRightMatch) {
-            const value = parseFloat(testRightMatch[1]);
-            const absValue = Math.abs(value);
-            elements.offsetRight.textContent = value.toFixed(2);
-            if (elements.offsetRightIndicator) {
-                elements.offsetRightIndicator.classList.remove(...offsetClasses);
-                elements.offsetRightIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
-            }
+        if (targetSide === 'left' || targetSide === 'right') {
+            updateSide(targetSide);
+        } else {
+            updateSide('left');
+            updateSide('right');
         }
         
         // Update time with current time in HH:MM:SS format
@@ -401,7 +409,8 @@
             
             // Collect test configuration
             const testConfig = {
-                patient: elements.patientName.value || null,
+                subject_id: elements.subjectId.value ? parseInt(elements.subjectId.value) : null,
+                session_id: elements.sessionId.value ? parseInt(elements.sessionId.value) : null,
                 height_cm: elements.heightCm.value ? parseInt(elements.heightCm.value) : null,
                 weight_kg: elements.weightKg.value ? parseFloat(elements.weightKg.value) : null,
                 crutch_height: elements.crutchHeight.value ? parseInt(elements.crutchHeight.value) : null
@@ -552,7 +561,8 @@
             const testConfig = data.test_config;
             
             if (testConfig) {
-                if (testConfig.patient) elements.patientName.value = testConfig.patient;
+                if (testConfig.subject_id) elements.subjectId.value = testConfig.subject_id;
+                if (testConfig.session_id) elements.sessionId.value = testConfig.session_id;
                 if (testConfig.height_cm) elements.heightCm.value = testConfig.height_cm;
                 if (testConfig.weight_kg) elements.weightKg.value = testConfig.weight_kg;
                 if (testConfig.crutch_height) elements.crutchHeight.value = testConfig.crutch_height;
@@ -580,6 +590,65 @@
         if (!elements.nodeStatusContent || !elements.toggleNodeStatusBtn) return;
         elements.nodeStatusContent.classList.toggle('collapsed');
         elements.toggleNodeStatusBtn.classList.toggle('collapsed');
+    }
+
+    // Configure Status panel based on masterSide
+    function configureStatusPanel() {
+        const cards = document.querySelectorAll('.node-status-card');
+        if (cards.length < 2) return;
+        
+        // Find cards by their content (which one contains loadcell_left/right)
+        let leftCard = null;
+        let rightCard = null;
+        
+        cards.forEach(card => {
+            if (card.textContent.includes('loadcell_left')) {
+                leftCard = card;
+            }
+            if (card.textContent.includes('loadcell_right')) {
+                rightCard = card;
+            }
+        });
+        
+        if (!leftCard || !rightCard) {
+            console.warn('⚠ Could not identify left/right cards');
+            return;
+        }
+        
+        const isMasterLeft = masterSide === 'left';
+        const masterCard = isMasterLeft ? leftCard : rightCard;
+        
+        // Update card titles with correct roles (left always first, right always second)
+        const leftTitle = leftCard.querySelector('.node-status-card-title');
+        const rightTitle = rightCard.querySelector('.node-status-card-title');
+        
+        if (leftTitle) {
+            leftTitle.textContent = `Left Crutch (${isMasterLeft ? 'Master' : 'Slave'})`;
+        }
+        if (rightTitle) {
+            rightTitle.textContent = `Right Crutch (${isMasterLeft ? 'Slave' : 'Master'})`;
+        }
+        
+        // Move Controller, Logger and Separator items to master card
+        // Find the items
+        const controllerItem = document.querySelector('[id="status-controller"]').closest('.node-status-item');
+        const loggerItem = document.querySelector('[id="status-hdf5"]').closest('.node-status-item');
+        const separator = leftCard.querySelector('.node-status-separator');
+        const tipItem = masterCard.querySelector('[id*="tip-"]').closest('.node-status-item');
+        
+        if (controllerItem && loggerItem && separator && tipItem) {
+            // Remove from their current location
+            controllerItem.remove();
+            loggerItem.remove();
+            separator.remove();
+            
+            // Insert into master card maintaining order: Controller, Logger, Separator, Tip
+            tipItem.parentNode.insertBefore(controllerItem, tipItem);
+            controllerItem.parentNode.insertBefore(loggerItem, tipItem);
+            loggerItem.parentNode.insertBefore(separator, tipItem);
+        }
+        
+        console.log(`✓ Status panel configured: master=${masterSide}`);
     }
 
     let lastStatusCount = 0;
@@ -616,16 +685,17 @@
                     
                     console.log(`✉️ Processing message: ${messageText} [${feedbackType}]`);
                     
-                    // Check if this is an offset calibration message
-                    const isOffsetCalibration = text?.toLowerCase().includes('offset calibration');
-                    if (isOffsetCalibration) {
-                        updateOffsetDisplay(text);
+                    // Check if this is an offset message
+                    const isOffsetMessage = /\boffset\s*=\s*[-\d.]+/i.test(text || '') && /\btest\s*=\s*[-\d.]+/i.test(text || '');
+                    if (isOffsetMessage) {
+                        updateOffsetDisplay(text, msg.side || msg.topic);
                         // Don't show the message as feedback, only update the display
                         return;
                     }
                     
                     // Determine routing: set_offset errors go to offset section, others to start/stop section
-                    const isOffsetRelated = source?.toLowerCase().includes('set_offset') || 
+                    const isOffsetRelated = isOffsetMessage ||
+                                           source?.toLowerCase().includes('set_offset') || 
                                            text?.toLowerCase().includes('set_offset') ||
                                            text?.toLowerCase().includes('calibrat');
                     
@@ -763,12 +833,41 @@
                 btn.className = 'condition-btn';
                 btn.textContent = condition.label;
                 btn.style.backgroundColor = condition.color;
+                btn.dataset.conditionId = condition.id;
+                btn.dataset.conditionLabel = condition.label;
                 btn.onclick = () => selectCondition(condition.id, condition.label);
                 elements.conditionsGrid.appendChild(btn);
             });
+            updateConditionsLayout();
+            updateConditionButtonSelection();
         } catch (error) {
             console.error('Load conditions error:', error);
         }
+    }
+
+    function updateConditionsLayout() {
+        if (!elements.conditionsGrid) return;
+        const isMobile = window.innerWidth <= 768;
+        const isOdd = conditionsConfig.length % 2 === 1;
+        const buttons = elements.conditionsGrid.querySelectorAll('.condition-btn');
+        buttons.forEach(btn => btn.classList.remove('span-2'));
+
+        if (isMobile && isOdd) {
+            const lastBtn = Array.from(buttons).find(btn => btn.dataset.conditionId === 'last_condition_not_valid');
+            if (lastBtn) {
+                lastBtn.classList.add('span-2');
+            }
+        }
+    }
+
+    function updateConditionButtonSelection() {
+        if (!elements.conditionsGrid) return;
+        const buttons = elements.conditionsGrid.querySelectorAll('.condition-btn');
+        buttons.forEach(btn => {
+            const matchesLabel = btn.dataset.conditionLabel === state.currentCondition;
+            const matchesId = btn.dataset.conditionId === state.currentCondition;
+            btn.classList.toggle('selected', matchesLabel || matchesId);
+        });
     }
     
     // Open conditions modal
@@ -790,6 +889,7 @@
             // Update local state immediately
             state.currentCondition = conditionLabel;
             updateUI();
+            updateConditionButtonSelection();
             
             const response = await fetch(`${API_BASE}/save_condition`, {
                 method: 'POST',
@@ -847,6 +947,7 @@
     checkStatus();
     loadLastTestConfig();
     loadConditions();
+    configureStatusPanel();
     loadLastCondition();
     updateUI();
     checkNewStatusMessages();

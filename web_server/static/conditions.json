@@ -1,19 +1,29 @@
 {
   "conditions": [
     {
-      "id": "walking",
-      "label": "Walking",
-      "color": "#10b981"
-    },
-    {
       "id": "balancing",
       "label": "Balancing",
       "color": "#3b82f6"
     },
     {
+      "id": "walking",
+      "label": "Walking",
+      "color": "#8b5cf6"
+    },
+    {
+      "id": "stand_up",
+      "label": "Stand up",
+      "color": "#22c55e"
+    },
+    {
+      "id": "sit_down",
+      "label": "Sit down",
+      "color": "#10b981"
+    },
+    {
       "id": "left_turning",
       "label": "Left Turning",
-      "color": "#8b5cf6"
+      "color": "#f97316"
     },
     {
       "id": "right_turning",
@@ -39,6 +49,11 @@
       "id": "ramp_down",
       "label": "Ramp (down)",
       "color": "#14b8a6"
+    },
+    {
+      "id": "last_condition_not_valid",
+      "label": "Last Condition Not Valid",
+      "color": "#000000"
     }
   ]
 }

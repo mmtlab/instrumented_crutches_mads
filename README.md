@@ -1,20 +1,24 @@
 # Instrumented Crutches
 
-A modular system for acquiring, processing, and visualizing force data from instrumented crutches using the MADS (Modular Acquisition and Data System) framework.
+A modular system for acquiring, processing, and visualizing force data from instrumented crutches using the MADS framework.
 
 ## Project Structure
 
 - **controller**: Filter plugin for MADS that processes control commands
-- **loadcell**: Filter plugin for MADS that reads and processes force sensor data from load cells
-- **logger**: HDF5 sink plugin for MADS that stores acquired data in structured HDF5 format
+- **status_handler**: Filter plugin for MADS that processes status (info, errors and warnings)
+- **tip_loadcell**: Filter plugin for MADS that reads and processes force sensor data from load cells in the crutch tip
+- **handle_loadcell**: Filter plugin for MADS that reads and processes force sensor data from load cells in the crutch handle
+- **eye_tracker**: Filter plugin for MADS that control a remote pupil labs Neon eye-tracker and publish syncronization information
+- **hdf5_writer**: HDF5 sink plugin for MADS that stores acquired data in structured HDF5 format
 - **web_server**: FastAPI-based web interface for real-time control, visualization, and data download
+
+At every start the web_server sends a command on `ws_command` topic with the current recording id. The controller handles the propagation of the command on the `command` topic if correctly received. The subject and session id are handled by the web_server since we want to keep general the file managing for any future application (i.e. in a future project the developer wants to save a file for each condition, then they will need to handle the condition link with the recording id). 
 
 ## Features
 
 - Real-time force data acquisition from dual load cells
 - HDF5-based data storage with hierarchical organization
 - Web-based control interface and visualization dashboard
-- Independent left/right crutch data handling with separate timestamps
 - RESTful API for data access and device control
 
 ## Supported Modalities

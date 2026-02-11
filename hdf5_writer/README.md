@@ -62,43 +62,26 @@ cmake --build build --config Release -t install
 ```
 
 
-## INI settings for Instrumented Crutches
+## INI settings example for Instrumented Crutches
 
 The plugin supports the following settings in the INI file:
 
 ```ini
+# execution command examples:
+# mads-sink hdf5_writer.plugin 
 [hdf5_writer]
-sub_topic = ["command", "tip_loadcell", "handle_loadcell", "imu"]
+sub_topic = ["command", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"]
 folder_path = "../web_server/data"
 keypath_sep = "."
-sensor = "unknown" # used to select suffix_filename and keypaths
-
-[hdf5_writer.suffix_filename]
-tip_loadcell = "tip_loadcell"
-handle_loadcell = "handle_loadcell"
-imu = "imu"
-
-[hdf5_writer.keypaths]
-tip_loadcell = {"tip_loadcell" = ["ts_right", "ts_left", "right", "left"]}
-handle_loadcell = {"handle_loadcell" = ["ts_right", "ts_left", "right", "left"]} # update with actual keypaths from handle_loadcell agent (2 upper loadcells + 2 lower loadcells + 2 left loadcells + 2 right loadcells)
-imu = {"imu" = ["ts_right", "ts_left", "ax_right", "ay_right", "az_right", "ax_left", "ay_left", "az_left", "gx_right", "gy_right", "gz_right", "gx_left", "gy_left", "gz_left", "mx_right", "my_right", "mz_right", "mx_left", "my_left", "mz_left"]}
+keypaths = {"tip_loadcell" = ["force.right", "force.left"],
+            "handle_loadcell" = ["force.right", "force.left"], 
+            "imu" = ["ax.right", "ay.right", "az.right", "ax.left", "ay.left", "az.left", "gx.right", "gy.right", "gz.right", "gx.left", "gy.left", "gz.left", "mx.right", "my.right", "mz.right", "mx.left", "my.left", "mz.left"],
+            "pupil_neon" = ["recording_id", "time_offset_ms_mean", "time_offset_ms_std", "time_offset_ms_median", "roundtrip_duration_ms_mean", "roundtrip_duration_ms_std", "roundtrip_duration_ms_median"]}
 ```
 
-The keypaths `timecode`, `timestamp`, and `hostname` are always added to the list of keypaths, even if not specified in the INI file.
+The keypaths `timecode`, `timestamp`, and `hostname` are always added to the list of keypaths, even if not specified in the INI file. Since `timecode` and `timestamp` are always logged, make sure that if you publish a message for one crutch, you also fill the other crutch's field with a NaN. This ensures that every row in the timestamp dataset has a corresponding row in the force dataset.
 
-The `suffix_filename` and `sensor` settings are required. The `sensor` value is used by the plugin to select two related configuration entries: the filename suffix (defined in `[hdf5_writer.suffix_filename]`) and the list of keypaths to store (defined in `[hdf5_writer.keypaths]`). To add a new sensor:
 
-- Add the sensor name as a key under `[hdf5_writer.suffix_filename]` and set the desired file suffix.
-- Add the same sensor name under `[hdf5_writer.keypaths]` and provide the list of keypaths (fields) to be saved for that sensor.
-- If the sensor publishes on a sub-topic, make sure that sub-topic is present in `sub_topic` as well.
-
-The plugin will automatically look up the entries for the configured `sensor` in both `suffix_filename` and `keypaths` and use the specified keypaths to create the HDF5 datasets. The keypaths `timecode`, `timestamp`, and `hostname` are added automatically even if not listed in the INI file.
-
-To run the logger for a specific sensor, override the `sensor` setting at runtime using the `-o` option. For example, to run the `imu` sensor logger:
-
-```bash
-mads-sink hdf5_writer.plugin -o sensor=imu
-```
 
 # HDF5 Tools
 

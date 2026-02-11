@@ -19,9 +19,27 @@
         </nav>
         
         <div class="section">
-            <select id="acquisition-select" class="select">
-                <option value="">-- Choose a recording --</option>
-            </select>
+            <div style="display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 12px;">
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="subject-select" style="display: block; margin-bottom: 4px; font-weight: 500; font-size: 14px;">Subject ID</label>
+                    <select id="subject-select" class="select">
+                        <option value="">-- Select Subject --</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="session-select" style="display: block; margin-bottom: 4px; font-weight: 500; font-size: 14px;">Session ID</label>
+                    <select id="session-select" class="select" disabled>
+                        <option value="">-- Select Subject First --</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="acquisition-select" style="display: block; margin-bottom: 4px; font-weight: 500; font-size: 14px;">Recording</label>
+                    <select id="acquisition-select" class="select" disabled>
+                        <option value="">-- Select Session First --</option>
+                    </select>
+                </div>
+                <button id="show-btn" class="btn btn-start" disabled>Show</button>
+            </div>
             <div id="feedback" class="feedback"></div>
         </div>
 

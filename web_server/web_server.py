@@ -225,11 +225,11 @@ def read_hdf5_data(file_path: Path):
         with h5py.File(file_path, 'r') as f:
             result = {}
             
-            # Check which datasets are available
-            has_left = '/loadcell/left' in f
-            has_right = '/loadcell/right' in f
-            has_ts_left = '/loadcell/ts_left' in f
-            has_ts_right = '/loadcell/ts_right' in f
+            # Check which datasets are available (new layout: /tip_loadcell/time.* and /tip_loadcell/force.*)
+            has_left = '/tip_loadcell/force.left' in f or '/loadcell/left' in f
+            has_right = '/tip_loadcell/force.right' in f or '/loadcell/right' in f
+            has_ts_left = '/tip_loadcell/time.left' in f or '/loadcell/ts_left' in f
+            has_ts_right = '/tip_loadcell/time.right' in f or '/loadcell/ts_right' in f
             
             if not has_left and not has_right:
                 raise HTTPException(status_code=500, detail="No loadcell data found in HDF5 file")
@@ -238,8 +238,12 @@ def read_hdf5_data(file_path: Path):
             
             # Read left crutch data and timestamps if available
             if has_left and has_ts_left:
-                left_data = f['/loadcell/left'][:]
-                ts_left_ms = f['/loadcell/ts_left'][:]  # milliseconds epoch
+                if '/tip_loadcell/force.left' in f and '/tip_loadcell/time.left' in f:
+                    left_data = f['/tip_loadcell/force.left'][:]
+                    ts_left_ms = f['/tip_loadcell/time.left'][:]  # milliseconds epoch
+                else:
+                    left_data = f['/loadcell/left'][:]
+                    ts_left_ms = f['/loadcell/ts_left'][:]  # milliseconds epoch
                 
                 # Convert to seconds and make relative
                 if start_time_ms is None:
@@ -251,8 +255,12 @@ def read_hdf5_data(file_path: Path):
             
             # Read right crutch data and timestamps if available
             if has_right and has_ts_right:
-                right_data = f['/loadcell/right'][:]
-                ts_right_ms = f['/loadcell/ts_right'][:]  # milliseconds epoch
+                if '/tip_loadcell/force.right' in f and '/tip_loadcell/time.right' in f:
+                    right_data = f['/tip_loadcell/force.right'][:]
+                    ts_right_ms = f['/tip_loadcell/time.right'][:]  # milliseconds epoch
+                else:
+                    right_data = f['/loadcell/right'][:]
+                    ts_right_ms = f['/loadcell/ts_right'][:]  # milliseconds epoch
                 
                 # Convert to seconds and make relative
                 if start_time_ms is None:
@@ -303,7 +311,11 @@ for acq_id, acq in acquisitions.items():
         try:
             with h5py.File(h5_path, 'r') as f:
                 # Try to get sample count from timestamp dataset
-                if '/loadcell/timestamp' in f:
+                if '/tip_loadcell/time.left' in f:
+                    samples = len(f['/tip_loadcell/time.left'][:])
+                elif '/tip_loadcell/time.right' in f:
+                    samples = len(f['/tip_loadcell/time.right'][:])
+                elif '/loadcell/timestamp' in f:
                     samples = len(f['/loadcell/timestamp'][:])
                 elif '/loadcell/left' in f:
                     samples = len(f['/loadcell/left'][:])
@@ -381,7 +393,8 @@ async def start_acquisition(test_config: dict = None):
     # Add test configuration if provided
     if test_config:
         acq_record["test_config"] = {
-            "patient": test_config.get("patient"),
+            "subject_id": test_config.get("subject_id"),
+            "session_id": test_config.get("session_id"),
             "height_cm": test_config.get("height_cm"),
             "weight_kg": test_config.get("weight_kg"),
             "crutch_height": test_config.get("crutch_height")
@@ -579,6 +592,34 @@ async def list_acquisitions():
     }
 
 
+@app.get("/subjects")
+async def list_subjects():
+    """Return list of subjects with their acquisitions."""
+    subjects_dict = {}
+    
+    # Group acquisitions by subject_id
+    for acq in acquisitions.values():
+        test_config = acq.get("test_config", {})
+        subject_id = test_config.get("subject_id")
+        
+        if subject_id is not None:
+            if subject_id not in subjects_dict:
+                subjects_dict[subject_id] = []
+            subjects_dict[subject_id].append(acq["id"])
+    
+    # Sort acquisitions by start_time for each subject
+    for subject_id in subjects_dict:
+        subjects_dict[subject_id].sort(
+            key=lambda acq_id: acquisitions[acq_id].get("start_time", ""),
+            reverse=True
+        )
+    
+    return {
+        "subjects": subjects_dict,
+        "count": len(subjects_dict)
+    }
+
+
 @app.get("/last-test-config")
 async def get_last_test_config():
     """Return test configuration from the last acquisition."""
@@ -689,10 +730,10 @@ async def download_force_csv(acquisition_id: str):
     # Read raw data with absolute timestamps in milliseconds
     try:
         with h5py.File(path, 'r') as f:
-            has_left = '/loadcell/left' in f
-            has_right = '/loadcell/right' in f
-            has_ts_left = '/loadcell/ts_left' in f
-            has_ts_right = '/loadcell/ts_right' in f
+            has_left = '/tip_loadcell/force.left' in f or '/loadcell/left' in f
+            has_right = '/tip_loadcell/force.right' in f or '/loadcell/right' in f
+            has_ts_left = '/tip_loadcell/time.left' in f or '/loadcell/ts_left' in f
+            has_ts_right = '/tip_loadcell/time.right' in f or '/loadcell/ts_right' in f
             
             if not has_left and not has_right:
                 raise HTTPException(status_code=400, detail="No loadcell data found in HDF5 file")
@@ -703,12 +744,20 @@ async def download_force_csv(acquisition_id: str):
             ts_right_ms = []
             
             if has_left and has_ts_left:
-                left_data = f['/loadcell/left'][:].tolist()
-                ts_left_ms = f['/loadcell/ts_left'][:].tolist()  # milliseconds epoch
+                if '/tip_loadcell/force.left' in f and '/tip_loadcell/time.left' in f:
+                    left_data = f['/tip_loadcell/force.left'][:].tolist()
+                    ts_left_ms = f['/tip_loadcell/time.left'][:].tolist()  # milliseconds epoch
+                else:
+                    left_data = f['/loadcell/left'][:].tolist()
+                    ts_left_ms = f['/loadcell/ts_left'][:].tolist()  # milliseconds epoch
             
             if has_right and has_ts_right:
-                right_data = f['/loadcell/right'][:].tolist()
-                ts_right_ms = f['/loadcell/ts_right'][:].tolist()  # milliseconds epoch
+                if '/tip_loadcell/force.right' in f and '/tip_loadcell/time.right' in f:
+                    right_data = f['/tip_loadcell/force.right'][:].tolist()
+                    ts_right_ms = f['/tip_loadcell/time.right'][:].tolist()  # milliseconds epoch
+                else:
+                    right_data = f['/loadcell/right'][:].tolist()
+                    ts_right_ms = f['/loadcell/ts_right'][:].tolist()  # milliseconds epoch
             
             # Check if we have any data
             if not left_data and not right_data:
@@ -787,7 +836,7 @@ async def download_info_csv(acquisition_id: str):
     test_config = acq.get('test_config', {})
     if test_config:
         writer.writerow(['Test Configuration'])
-        writer.writerow(['Patient', test_config.get('patient', '')])
+        writer.writerow(['Subject ID', test_config.get('subject_id', '')])
         writer.writerow(['Height (cm)', test_config.get('height_cm', '')])
         writer.writerow(['Weight (kg)', test_config.get('weight_kg', '')])
         writer.writerow(['Crutch Height', test_config.get('crutch_height', '')])

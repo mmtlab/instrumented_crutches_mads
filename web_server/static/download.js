@@ -86,16 +86,18 @@ function createAcquisitionCard(acq) {
     const rawId = acq.id || 'N/A';
     // Remove "acq_" prefix and format as "Acquisition: ID"
     const displayId = rawId.startsWith('acq_') ? `Acquisition: ${rawId.replace('acq_', '')}` : rawId;
-    const patient = (acq.test_config && acq.test_config.patient) ? acq.test_config.patient : 'Unknown';
+    const subjectId = (acq.test_config && acq.test_config.subject_id) ? `Subject ${acq.test_config.subject_id}` : 'Unknown';
+    const sessionId = (acq.test_config && acq.test_config.session_id) ? `Session ${acq.test_config.session_id}` : '';
     const dateTime = formatDateTime(acq.start_time);
     
     // Info section
     const infoDiv = document.createElement('div');
     infoDiv.style.cssText = 'display: flex; flex-direction: column; gap: 4px; flex: 1;';
+    const sessionInfo = sessionId ? ` - ${sessionId}` : '';
     infoDiv.innerHTML = `
         <strong style="font-size: 16px; color: var(--text);">${displayId}</strong>
         <div style="font-size: 14px; color: var(--muted);">
-            <strong style="color: var(--text);">${patient}</strong> - ${dateTime}
+            <strong style="color: var(--text);">${subjectId}</strong>${sessionInfo} - ${dateTime}
         </div>
     `;
     

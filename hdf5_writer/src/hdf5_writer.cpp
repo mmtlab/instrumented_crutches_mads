@@ -76,7 +76,7 @@ public:
 
         int id = input["id"];
         // Open a new file for recording
-        string new_filename = "_" + to_string(id) + ".h5";
+        string new_filename = "_acq_" + to_string(id) + ".h5";
 
         if (new_filename == _filename) {
           _filename = "not_handled_filename.h5"; // reset filename to avoid overwriting in case of new recording without restart
