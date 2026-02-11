@@ -23,7 +23,6 @@
 
 // other includes as needed here
 #include <memory>          // For std::unique_ptr
-#include <chrono>          // For timing
 
 // Include HX711 for Raspberry Pi
 #include <hx711/common.h>  // Library for HX711
@@ -37,8 +36,6 @@ using namespace HX711;
 // Load the namespaces
 using namespace std;
 using json = nlohmann::json;
-using namespace std::chrono;
-
 
 // Plugin class. This shall be the only part that needs to be modified,
 // implementing the actual functionality
@@ -101,20 +98,22 @@ public:
   return_type process(json &out) override {
     out.clear();
 
-    // Not valid states are handled in load_data, here we just process data
+    // Not valid states or transitions are handled in load_data, here we just process data
     // Here we should have only valid states and errors related to reading the sensor
-
 
     // load the data as necessary and set the fields of the json out variable
     if (_acquiring) {
-      auto now = std::chrono::system_clock::now();
-      out["ts_" + _params["side"].get<string>()] = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 
       try {
-        // Real hardware acquisition on Raspberry Pi
         if (_hx && _enabled) {
           double loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
-          out[_params["side"]] = loadCellValue - _offset;
+
+          // always fill both left and right fields in the output json
+          // if the side is left, fill the right field with NaN, and vice versa
+          // It is important to always fill both fields to avoid issues in the h5 file since the timestamp field is shared and always logged 
+          out["force"][_side] = loadCellValue - _offset;
+          out["force"][_side == "left" ? "right" : "left"] = NaN; 
+
         }
       } catch (const std::exception &e) {
         _error = "Tip Loadcell: Error reading from HX711: " + string(e.what());
@@ -130,8 +129,10 @@ public:
         // test read after setting offset
         auto offset_test = _hx->weight(20).getValue(Mass::Unit::N) - _offset;
         
-        out["offset_" + _params["side"].get<string>()] = _offset;
-        out["offset_test_" + _params["side"].get<string>()] = offset_test;
+        // Store the offset and the test read in the output json for user feedback
+        // We only fill the field for the current side
+        out["offset"][_side] = _offset;
+        out["offset_test"][_side] = offset_test;
 
       } catch (const std::exception &e) {
         _error = "Tip Loadcell: Error reading from HX711 for offset: " + string(e.what());
@@ -161,7 +162,8 @@ public:
     _params.merge_patch(params);
 
     if (_params.contains("side") && (_params["side"] == "left" || _params["side"] == "right")) {
-      std::cout << "Tip Loadcell: Side set to " << _params["side"] << std::endl;
+      _side = _params["side"].get<string>();
+      std::cout << "Tip Loadcell: Side set to " << _side << std::endl;
     } else {
       _error = "Tip Loadcell: Side parameter not set or invalid (only 'left' or 'right' allowed).";
       std::cout << _error << std::endl;
@@ -173,10 +175,10 @@ public:
     int dataPin = _params.value("datapin", 6); // default data pin 6 based on typical Raspberry Pi wiring for HX711
     int clockPin = _params.value("clockpin", 26); // default clock pin 26 based on typical Raspberry Pi wiring for HX711
 
-    if (_params.contains("scaling") && _params["scaling"].contains(_params.value("side", "unknown"))) {
-      double scaling = _params["scaling"][_params.value("side", "unknown")].get<double>();
+    if (_params.contains("scaling") && _params["scaling"].contains(_side)) {
+      double scaling = _params["scaling"][_side].get<double>();
     } else {
-      _error = "Tip Loadcell: Scaling factor for side '" + _params.value("side", "unknown") + "' not found in scaling parameter.";
+      _error = "Tip Loadcell: Scaling factor for side '" + _side + "' not found in scaling parameter.";
       std::cout << _error << std::endl;
       throw std::runtime_error(_error);
     }
@@ -211,6 +213,7 @@ private:
   bool _setting_offset = false;
 
   // Internal variables
+  string _side = "unknown";
   float _offset = 0.0;
   
 };

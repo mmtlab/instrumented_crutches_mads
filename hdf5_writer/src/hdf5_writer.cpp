@@ -56,7 +56,7 @@ public:
     if (topic == "command"){
 
       if(!input.contains("command")) {
-        _error = "Hdf5_writer " + _sensor + ": missing command in payload";
+        _error = "Hdf5_writer: missing command in payload";
         return return_type::error;
       }
 
@@ -64,11 +64,11 @@ public:
 
       if (action == "start") {
         if (_recording) {
-          _error = "Hdf5_writer " + _sensor + ": start requested while already recording";
+          _error = "Hdf5_writer: start requested while already recording";
           return return_type::warning;
         }
         if (!input.contains("id")) {
-          _error = "Hdf5_writer " + _sensor + ": start command requires an id";
+          _error = "Hdf5_writer: start command requires an id";
           return return_type::error;
         }
 
@@ -76,11 +76,11 @@ public:
 
         int id = input["id"];
         // Open a new file for recording
-        string new_filename = "_" + to_string(id) + _filename_suffix +".h5";
+        string new_filename = "_" + to_string(id) + ".h5";
 
         if (new_filename == _filename) {
           _filename = "not_handled_filename.h5"; // reset filename to avoid overwriting in case of new recording without restart
-          _error = "Hdf5_writer " + _sensor + ": filename collision detected for id: " + to_string(id);
+          _error = "Hdf5_writer: filename collision detected for id: " + to_string(id);
           return return_type::error;
         } else {
           _filename = new_filename;
@@ -93,17 +93,17 @@ public:
           return return_type::error;
         }
         _recording = true;
-        std::cout << "Hdf5_writer " + _sensor + ": Starting recording id: " << id << std::endl;
+        std::cout << "Hdf5_writer: Starting recording id: " << id << std::endl;
 
         return return_type::success;
         // other actions as needed
       } else if (action == "stop") {
         if (_recording == false) {
-          _error = "Hdf5_writer " + _sensor + ": stop requested while not recording";
+          _error = "Hdf5_writer: stop requested while not recording";
           return return_type::warning;
         }
 
-        std::cout << "Hdf5_writer " + _sensor + ": Stopping recording " << std::endl;
+        std::cout << "Hdf5_writer: Stopping recording " << std::endl;
 
         try{
           _converter.close(); // Close the current file
@@ -121,7 +121,7 @@ public:
         }
 
         _recording = false;
-        std::cout << "Hdf5_writer " + _sensor + ": Stopping recording"<< std::endl;
+        std::cout << "Hdf5_writer: Stopping recording"<< std::endl;
         
         return return_type::success;
 
@@ -167,24 +167,13 @@ public:
     // params needs to be cast to json
     _params.merge_patch(params);
 
-    _sensor = _params.value("sensor", "unknown");
-    if (_sensor == "unknown") {
-      _error = "Missing 'sensor' in parameters";
-      throw std::invalid_argument(_error);
-    }
-
     _folder_path = _params.value("folder_path", "./fallback_data/");
     _folder_path += (_folder_path.back() == '/') ? "" : "/"; // Ensure trailing slash
 
-    if (_params.contains("suffix_filename")) {
-      _filename_suffix = _params["suffix_filename"].value(_sensor, "unknown_sensor");
-    } else {
-      throw std::invalid_argument("Missing 'suffix_filename' in parameters");
-    }
 
     try {
       _converter.set_keypath_separator(_params["keypath_sep"].get<string>());
-      for (const auto &group : _params["keypaths"][_sensor].items()) {
+      for (const auto &group : _params["keypaths"].items()) {
         for (const auto &keypath : group.value()) {
           _converter.append_keypath(keypath.get<string>(), group.key());
         }
@@ -226,10 +215,8 @@ private:
   JsonToHdf5Converter _converter; // Converter for JSON to HDF5
 
   // settings variables
-  string _sensor = "unknown";
   string _folder_path = "";
   string _filename = "";
-  string _filename_suffix = "";
 
   // control variables
   bool _recording = false;

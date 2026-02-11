@@ -68,7 +68,7 @@ public:
 
         _send_command = true;
         _command_to_send = action;
-        _id_to_send = input.value("id", -1);
+        _id_to_send = input.value("id", "sub_unknown_id");
         std::cout << "Controller: Sending command " << action << std::endl;
         return return_type::success;
       }
