@@ -401,6 +401,18 @@ h2 {
     color: #991b1b;
 }
 
+.node-status-connected {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.node-status-disconnected {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
 /* Offset indicator */
 .offset-indicator {
     display: flex;

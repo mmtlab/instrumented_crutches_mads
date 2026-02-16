@@ -91,6 +91,13 @@ public:
         return return_type::success;
       }
 
+      if (action == "pupil_neon_connect" || action == "pupil_neon_disconnect") {
+        _send_command = true;
+        _command_to_send = action;
+        std::cout << "Controller: Sending command " << action << std::endl;
+        return return_type::success;
+      }
+
       _error = "Controller: unknown command '" + action + "'";
       return return_type::warning;
     }

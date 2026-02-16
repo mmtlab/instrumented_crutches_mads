@@ -132,8 +132,7 @@ public:
       }
       else {
         _error = "Invalid command or state for command: " + action;
-        std::cerr << _error << std::endl;
-        return return_type::error;
+        return return_type::retry;
       }
     }
 

@@ -548,6 +548,46 @@ async def save_condition(condition_data: dict):
             "status": "error",
             "message": "No acquisitions found"
         }
+
+
+@app.post("/eyetracker_command")
+async def eyetracker_command(command_data: dict):
+    """Send eye-tracker command via MADS agent to ws_command topic."""
+    global mads_agent
+    
+    command = command_data.get("command", "").strip()
+    if not command:
+        return {
+            "status": "error",
+            "message": "Command cannot be empty"
+        }
+    
+    if command not in ["pupil_neon_connect", "pupil_neon_disconnect"]:
+        return {
+            "status": "error",
+            "message": "Invalid command"
+        }
+    
+    if not mads_agent:
+        return {
+            "status": "error",
+            "message": "MADS agent not initialized"
+        }
+    
+    try:
+        payload_dict = {"command": command}
+        topic = "ws_command"
+        mads_agent.publish(topic, payload_dict)
+        return {
+            "status": "success",
+            "message": f"Command {command} sent"
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "message": str(exc)
+        }
+
     
     # Add condition with timestamp
     timestamp = datetime.now().isoformat()
@@ -881,11 +921,14 @@ async def get_status():
     # Check for new messages
     check_status_messages()
     
-    print(f"📤 /status endpoint called - returning {len(status_messages)} messages (last 20)")
+    total_count = len(status_messages)
+    recent_messages = status_messages[-20:] if total_count > 0 else []
+    
+    print(f"📤 /status endpoint called - returning {len(recent_messages)} recent messages out of {total_count} total")
     
     return {
-        "messages": status_messages[-20:],  # Return last 20 messages
-        "count": len(status_messages)
+        "messages": recent_messages,
+        "total_count": total_count  # Global count for frontend tracking
     }
 
 

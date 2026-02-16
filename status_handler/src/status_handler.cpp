@@ -190,11 +190,11 @@ public:
 
       // Build neon info message
       std::ostringstream oss;
-      oss  << (input.value("pupil_neon_connected", false) ? "" : "=not connected");
+      oss  << (input.value("pupil_neon_connected", false) ? "connected" : "disconnected");
 
       if (input.contains("pupil_neon_connection_error") && !input["pupil_neon_connection_error"].is_null()) {
         level = "error";
-        oss << input["pupil_neon_connection_error"].get<string>();
+        oss << " error: " << input["pupil_neon_connection_error"].get<string>();
       } else {
         level = "info";
       }

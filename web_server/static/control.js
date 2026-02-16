@@ -5,7 +5,7 @@
     'use strict';
     
     // Configuration - which side is the master (only change on restart)
-    const masterSide = 'left';  // Can be 'left' or 'right' - requires restart to change
+    const masterSide = 'right';  // Can be 'left' or 'right' - requires restart to change
     
     // API configuration
     const API_BASE = '';
@@ -53,6 +53,8 @@
         tipRightState: document.getElementById('tip-right-state'),
         statusController: document.getElementById('status-controller'),
         statusControllerState: document.getElementById('status-controller-state'),
+        statusEyetracker: document.getElementById('status-eyetracker'),
+        statusEyetrackerState: document.getElementById('status-eyetracker-state'),
         statusHdf5: document.getElementById('status-hdf5'),
         statusHdf5State: document.getElementById('status-hdf5-state'),
         toggleNodeStatusBtn: document.getElementById('toggle-node-status-btn'),
@@ -60,11 +62,16 @@
         conditionBtn: document.getElementById('condition-btn'),
         conditionsModal: document.getElementById('conditions-modal'),
         closeConditionsBtn: document.getElementById('close-conditions-btn'),
-        conditionsGrid: document.getElementById('conditions-grid')
+        conditionsGrid: document.getElementById('conditions-grid'),
+        eyetrackerBtn: document.getElementById('eyetracker-btn'),
+        eyetrackerStatus: document.getElementById('eyetracker-status'),
+        eyetrackerFeedbackContainer: document.getElementById('eyetracker-feedback-container')
     };
     
     // Application state - add current condition
     state.currentCondition = 'walking'; // Default condition;
+    state.eyetrackerConnected = false; // Eye-tracker connection state
+
     
     // Show feedback message to user
     function showFeedback(message, type) {
@@ -239,6 +246,47 @@
         }
     }
 
+    const eyetrackerStatusClasses = ['node-status-connected', 'node-status-disconnected'];
+
+    function setEyetrackerStatus(status) {
+        const indicator = elements.statusEyetracker;
+        const stateLabel = elements.statusEyetrackerState;
+
+        if (!indicator || !stateLabel) {
+            console.warn('⚠️ Eye-tracker status elements not found');
+            return;
+        }
+
+        const isConnected = status === 'connected';
+        
+        console.log(`🔄 setEyetrackerStatus called with: "${status}"`);
+        
+        // Update Status panel
+        indicator.classList.remove(...eyetrackerStatusClasses);
+        if (isConnected) {
+            indicator.classList.add('node-status-connected');
+            stateLabel.textContent = 'Connected';
+            console.log('✅ Eye-tracker Status Panel: Connected');
+        } else {
+            indicator.classList.add('node-status-disconnected');
+            stateLabel.textContent = 'Disconnected';
+            console.log('❌ Eye-tracker Status Panel: Disconnected');
+        }
+        
+        // Update Eye-tracker feedback panel and button
+        if (elements.eyetrackerStatus) {
+            elements.eyetrackerStatus.textContent = isConnected ? 'Connected' : 'Disconnected';
+            elements.eyetrackerStatus.style.color = isConnected ? '#10b981' : '#64748b';
+        }
+        
+        if (elements.eyetrackerBtn) {
+            elements.eyetrackerBtn.textContent = isConnected ? 'Disconnect' : 'Connect';
+        }
+        
+        // Sync state
+        state.eyetrackerConnected = isConnected;
+    }
+
     function getCrutchSideFromMessage(msg) {
         const sideRaw = (msg.side || '').toString().toLowerCase();
         if (sideRaw === 'left' || sideRaw === 'right') return sideRaw;
@@ -249,12 +297,32 @@
         return '';
     }
 
-    function updateTipStatusFromMessage(msg) {
-        const side = getCrutchSideFromMessage(msg);
+    function updateSensorStatusFromMessage(msg) {
         const level = (msg.level || '').toString().toLowerCase();
         const text = (msg.message || '').toString().trim().toLowerCase();
         const source = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString();
+        const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
 
+        // Handle eye-tracker sensors (pupil_neon, eye_tracker)
+        if (sourceNorm.includes('eye_tracker') || sourceNorm.includes('pupil_neon')) {
+            console.log(`👁️ Eye-tracker message detected: source="${source}", text="${text}", level="${level}"`);
+            // Check disconnected FIRST (more specific) before connected
+            if (text === 'disconnected' || text.includes('disconnected')) {
+                console.log(`❌ Calling setEyetrackerStatus('disconnected')`);
+                setEyetrackerStatus('disconnected');
+                return;
+            } else if (text === 'connected' || text.includes('connected')) {
+                console.log(`✅ Calling setEyetrackerStatus('connected')`);
+                setEyetrackerStatus('connected');
+                return;
+            } else {
+                console.warn(`⚠️ Eye-tracker message not recognized: "${text}"`);
+                return;
+            }
+        }
+
+        // Handle tip loadcell sensors and master services
+        const side = getCrutchSideFromMessage(msg);
         const isStartup = level === 'info' && text === 'startup';
         const isShutdown = level === 'critical' && (text === 'shutdown' || text.includes('shutdown') || text.includes('shutting down'));
 
@@ -266,7 +334,6 @@
                 setTipStatus(side, 'live');
             }
             // Update master services status
-            const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
             if (sourceNorm === 'controller') {
                 setServiceStatus('controller', 'live');
             } else if (sourceNorm === 'hdf5_writer') {
@@ -278,7 +345,6 @@
                 setTipStatus(side, 'dead');
             }
             // Update master services status
-            const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
             if (sourceNorm === 'controller') {
                 setServiceStatus('controller', 'dead');
             } else if (sourceNorm === 'hdf5_writer') {
@@ -629,23 +695,26 @@
             rightTitle.textContent = `Right Crutch (${isMasterLeft ? 'Slave' : 'Master'})`;
         }
         
-        // Move Controller, Logger and Separator items to master card
+        // Move Controller, Logger, Eye-tracker and Separator items to master card
         // Find the items
         const controllerItem = document.querySelector('[id="status-controller"]').closest('.node-status-item');
         const loggerItem = document.querySelector('[id="status-hdf5"]').closest('.node-status-item');
+        const eyetrackerItem = document.querySelector('[id="status-eyetracker"]').closest('.node-status-item');
         const separator = leftCard.querySelector('.node-status-separator');
         const tipItem = masterCard.querySelector('[id*="tip-"]').closest('.node-status-item');
         
-        if (controllerItem && loggerItem && separator && tipItem) {
+        if (controllerItem && loggerItem && eyetrackerItem && separator && tipItem) {
             // Remove from their current location
             controllerItem.remove();
             loggerItem.remove();
+            eyetrackerItem.remove();
             separator.remove();
             
-            // Insert into master card maintaining order: Controller, Logger, Separator, Tip
+            // Insert into master card maintaining order: Controller, Logger, Eye-tracker, Separator, Tip
             tipItem.parentNode.insertBefore(controllerItem, tipItem);
             controllerItem.parentNode.insertBefore(loggerItem, tipItem);
-            loggerItem.parentNode.insertBefore(separator, tipItem);
+            loggerItem.parentNode.insertBefore(eyetrackerItem, tipItem);
+            eyetrackerItem.parentNode.insertBefore(separator, tipItem);
         }
         
         console.log(`✓ Status panel configured: master=${masterSide}`);
@@ -659,13 +728,14 @@
             if (!response.ok) return;
             const data = await response.json();
             const messages = data.messages || [];
+            const totalCount = data.total_count || data.count || 0;
             
-            console.log(`📥 Received ${messages.length} messages from /status (lastStatusCount: ${lastStatusCount})`);
+            console.log(`📥 Received ${messages.length} recent messages (total: ${totalCount}, lastStatusCount: ${lastStatusCount})`);
             
             // Show only new messages as feedback
-            if (messages.length > lastStatusCount) {
-                const newMessages = messages.slice(lastStatusCount);
-                console.log(`📨 Showing ${newMessages.length} new messages:`, newMessages);
+            if (totalCount > lastStatusCount) {
+                const newMessages = messages.slice(Math.max(0, lastStatusCount - (totalCount - messages.length)));
+                console.log(`📨 Processing ${newMessages.length} new messages:`, newMessages);
                 newMessages.forEach(msg => {
                     const level = (msg.level || 'info').toString().toLowerCase();
                     const source = msg.source || msg.name || 'system';
@@ -673,7 +743,7 @@
                     const text = msg.message || msg.error || msg.detail || 'Status update';
                     const messageText = `${source}${side}: ${text}`;
 
-                    updateTipStatusFromMessage(msg);
+                    updateSensorStatusFromMessage(msg);
                     
                     // Map level to feedback type
                     let feedbackType = 'info';
@@ -719,7 +789,7 @@
                     }
                 });
             }
-            lastStatusCount = messages.length;
+            lastStatusCount = totalCount;  // Track total count globally, not array length
         } catch (error) {
             console.error('Check status error:', error);
         }
@@ -915,6 +985,46 @@
         }
     }
     
+    // Toggle eye-tracker connection
+    async function toggleEyetracker() {
+        const command = state.eyetrackerConnected ? 'pupil_neon_disconnect' : 'pupil_neon_connect';
+        
+        try {
+            const response = await fetch(`${API_BASE}/eyetracker_command`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: command })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status !== 'success') {
+                showFeedback(`⚠ ${data.message}`, 'warning');
+            }
+            // Don't update UI here - wait for backend message via setEyetrackerStatus()
+        } catch (error) {
+            console.error('Toggle eye-tracker error:', error);
+            showFeedback('✗ Cannot toggle eye-tracker. Check connection.', 'error');
+        }
+    }
+    
+    // Update eye-tracker UI
+    function updateEyetrackerUI() {
+        if (state.eyetrackerConnected) {
+            elements.eyetrackerBtn.textContent = 'Disconnect';
+            elements.eyetrackerStatus.textContent = 'Connected';
+            elements.eyetrackerStatus.style.color = '#10b981';
+        } else {
+            elements.eyetrackerBtn.textContent = 'Connect';
+            elements.eyetrackerStatus.textContent = 'Disconnected';
+            elements.eyetrackerStatus.style.color = '#64748b';
+        }
+    }
+    
     // Event listeners
     elements.offsetBtn.addEventListener('click', setOffset);
     elements.toggleConfigBtn.addEventListener('click', toggleConfigPanel);
@@ -925,6 +1035,7 @@
     elements.saveCommentBtn.addEventListener('click', saveComment);
     elements.conditionBtn.addEventListener('click', openConditionsModal);
     elements.closeConditionsBtn.addEventListener('click', closeConditionsModal);
+    elements.eyetrackerBtn.addEventListener('click', toggleEyetracker);
     
     // Close modal when clicking outside the modal content
     elements.conditionsModal.addEventListener('click', (e) => {

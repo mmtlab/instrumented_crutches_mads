@@ -76,6 +76,20 @@
         </div>
 
         <div class="section">
+            <h2>Eye-tracker</h2>
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
+                <button id="eyetracker-btn" class="btn">Connect</button>
+                <div style="display: flex; align-items: center; gap: 12px; font-size: 14px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <strong>Status:</strong>
+                        <span id="eyetracker-status" style="font-weight: 600; color: #64748b;">Disconnected</span>
+                    </div>
+                </div>
+            </div>
+            <div id="eyetracker-feedback-container" style="margin-top: 8px;"></div>
+        </div>
+
+        <div class="section">
             <div class="section-header">
                 <h2>Test Configuration</h2>
                 <button id="toggle-config-btn" class="toggle-btn collapsed" title="Collapse/Expand">+</button>
@@ -132,6 +146,13 @@
                             <div id="status-controller" class="node-status-indicator node-status-unknown">
                                 <span class="node-status-indicator-name">controller</span>
                                 <span id="status-controller-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                        </div>
+                        <div class="node-status-item">
+                            <div class="node-status-item-label">Eye-tracker</div>
+                            <div id="status-eyetracker" class="node-status-indicator node-status-disconnected">
+                                <span class="node-status-indicator-name">eyetracker</span>
+                                <span id="status-eyetracker-state" class="node-status-indicator-state">Disconnected</span>
                             </div>
                         </div>
                         <div class="node-status-item">
