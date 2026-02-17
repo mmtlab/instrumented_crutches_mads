@@ -362,7 +362,7 @@ async def android_chrome_512():
 @app.post("/start")
 async def start_acquisition(test_config: dict = None):
     """Start a fake acquisition and return generated acquisition id."""
-    global current_acquisition_id, next_id, acquisitions
+    global current_acquisition_id, next_id, acquisitions, mads_agent
     
     if current_acquisition_id is not None:
         return {
@@ -375,11 +375,32 @@ async def start_acquisition(test_config: dict = None):
     acquisition_id = f"acq_{next_id}"
     next_id += 1
     
-    success, mads_output = await send_mads_command_async("start", acquisition_id)
-    if not success:
+    # Send start command with subject_id and session_id if mads_agent is available
+    if not mads_agent:
         return {
             "status": "error",
-            "message": f"mads start failed: {mads_output}"
+            "message": "MADS agent not initialized"
+        }
+    
+    try:
+        topic = "ws_command"
+        start_payload = {"command": "start", "id": int(acquisition_id.replace('acq_', ''))}
+        
+        # Add subject_id if provided
+        subject_id = test_config.get("subject_id") if test_config else None
+        if subject_id is not None:
+            start_payload["subject_id"] = subject_id
+        
+        # Add session_id if provided
+        session_id = test_config.get("session_id") if test_config else None
+        if session_id is not None:
+            start_payload["session_id"] = session_id
+        
+        mads_agent.publish(topic, start_payload)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "message": f"mads start failed: {exc}"
         }
     
     # Create acquisition record with test configuration
@@ -410,6 +431,16 @@ async def start_acquisition(test_config: dict = None):
     save_index(acquisitions)
     
     current_acquisition_id = acquisition_id
+    
+    # Send current condition command if condition_id is provided and mads_agent is available
+    condition_id = test_config.get("condition_id", "").strip() if test_config else ""
+    if condition_id and mads_agent:
+        try:
+            topic = "ws_command"
+            mads_agent.publish(topic, {"command": "condition", "label": condition_id})
+        except Exception as exc:
+            # Log but don't fail the start if condition publish fails
+            print(f"Warning: Failed to publish condition command: {exc}", file=sys.stderr)
     
     return {
         "status": "started",
@@ -524,10 +555,11 @@ async def save_comment(comment_data: dict):
 @app.post("/save_condition")
 async def save_condition(condition_data: dict):
     """Save condition to the current or most recent acquisition."""
-    global acquisitions, current_acquisition_id
+    global acquisitions, current_acquisition_id, mads_agent
     
-    condition = condition_data.get("condition", "").strip()
-    if not condition:
+    condition_label = condition_data.get("condition", "").strip()
+    condition_id = condition_data.get("condition_id", "").strip()
+    if not condition_label:
         return {
             "status": "error",
             "message": "Condition cannot be empty"
@@ -548,6 +580,48 @@ async def save_condition(condition_data: dict):
             "status": "error",
             "message": "No acquisitions found"
         }
+
+    if not condition_id:
+        condition_id = condition_label
+
+    existing_conditions = acquisitions.get(target_acq_id, {}).get("conditions", [])
+    last_entry = existing_conditions[-1] if existing_conditions else None
+    last_id = ""
+    if isinstance(last_entry, dict):
+        last_id = (last_entry.get("condition_id") or last_entry.get("condition") or "").strip()
+
+    is_new_condition = last_id != condition_id
+
+    if is_new_condition:
+        # Add condition with timestamp
+        timestamp = datetime.now().isoformat()
+        condition_entry = {
+            "timestamp": timestamp,
+            "condition": condition_label,
+            "condition_id": condition_id
+        }
+
+        if "conditions" not in acquisitions[target_acq_id]:
+            acquisitions[target_acq_id]["conditions"] = []
+
+        acquisitions[target_acq_id]["conditions"].append(condition_entry)
+        save_index(acquisitions)
+
+        if mads_agent:
+            try:
+                topic = "ws_command"
+                mads_agent.publish(topic, {"command": "condition", "label": condition_id})
+            except Exception as exc:
+                return {
+                    "status": "error",
+                    "message": str(exc)
+                }
+
+    return {
+        "status": "success",
+        "message": "Condition saved" if is_new_condition else "Condition unchanged",
+        "acquisition_id": target_acq_id
+    }
 
 
 @app.post("/eyetracker_command")
@@ -587,26 +661,6 @@ async def eyetracker_command(command_data: dict):
             "status": "error",
             "message": str(exc)
         }
-
-    
-    # Add condition with timestamp
-    timestamp = datetime.now().isoformat()
-    condition_entry = {
-        "timestamp": timestamp,
-        "condition": condition
-    }
-    
-    if "conditions" not in acquisitions[target_acq_id]:
-        acquisitions[target_acq_id]["conditions"] = []
-    
-    acquisitions[target_acq_id]["conditions"].append(condition_entry)
-    save_index(acquisitions)
-    
-    return {
-        "status": "success",
-        "message": f"Condition '{condition}' saved to {target_acq_id}",
-        "acquisition_id": target_acq_id
-    }
 
 
 @app.get("/acquisitions")

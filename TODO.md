@@ -43,3 +43,4 @@ IN FUTURO:
 
 
 Gestire il controllo dell'avvio dell'acquisizione verificando da status_handler se gli agenti stanno pubblicando messaggi. Basta vedere se mi arriva un messaggio su quel topic.
+

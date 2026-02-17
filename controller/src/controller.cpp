@@ -65,11 +65,17 @@ public:
           _error = "Controller: start command requires an id";
           return return_type::error;
         }
+        if (input.contains("subject_id")) {
+          _subject_id_to_send = input.value("subject_id", -1);
+        }
+        if (input.contains("session_id")) {
+          _session_id_to_send = input.value("session_id", -1);
+        }
 
         _send_command = true;
         _command_to_send = action;
         _id_to_send = input.value("id", -1);
-        std::cout << "Controller: Sending command " << action << std::endl;
+        std::cout << "Controller: Sending command " << action << " with id " << _id_to_send<< std::endl;
         return return_type::success;
       }
 
@@ -98,6 +104,16 @@ public:
         return return_type::success;
       }
 
+      if (action == "condition") {
+        if (input.contains("label")) {
+          _send_command = true;
+          _command_to_send = action;
+          _label_to_send = input.value("label", "NA");
+        std::cout << "Controller: Sending command " << action << " with label " << _label_to_send << std::endl;
+          return return_type::success;
+        }
+      }
+
       _error = "Controller: unknown command '" + action + "'";
       return return_type::warning;
     }
@@ -116,12 +132,21 @@ public:
 
       if (_command_to_send == "start") {
         out["id"] = _id_to_send; // include id only for start command
+        if (_subject_id_to_send != -1) {
+          out["subject_id"] = _subject_id_to_send;
+        }
+        if (_session_id_to_send != -1) {
+          out["session_id"] = _session_id_to_send;
+        }
         _acquiring = true;
       } else if (_command_to_send == "stop") {
         _acquiring = false;
       }
       else if (_command_to_send == "set_offset") {
         //_error = "set_offset command not implemented in ControllerPlugin";
+      }
+      else if (_command_to_send == "condition") {
+        out["label"] = _label_to_send;
       }
       // do nothing special for set_offset
 
@@ -168,6 +193,9 @@ private:
   bool _send_command = false;
   string _command_to_send = "";
   int _id_to_send = -1;
+  int _subject_id_to_send = -1;
+  int _session_id_to_send = -1;
+  string _label_to_send = "NA";
   json _last_agent_event;
 };
 

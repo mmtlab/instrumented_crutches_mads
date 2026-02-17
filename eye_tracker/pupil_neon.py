@@ -10,6 +10,9 @@ sys.path.append(os.path.join(mads_path, 'python'))
 
 from mads_agent import Agent, MessageType
 
+
+from pupil_labs.realtime_api.models import InvalidTemplateAnswersError, TemplateItem
+
 try:
     from pupil_labs.realtime_api.simple import discover_one_device
 except Exception:
@@ -59,8 +62,7 @@ class PupilNeonAgent:
             if not self._connected:
                 self.publish_connection_status(False, err)
             return False
-
-        print("Discovering Pupil Neon device...")
+        
         try:
             dev = discover_one_device(max_search_duration_seconds=5)
         except Exception as e:
@@ -74,9 +76,19 @@ class PupilNeonAgent:
             if not self._connected:
                 self.publish_connection_status(False, err)
             return False
-
         print("Connected to Pupil Neon device:", dev)
+
+        # Fetch current template definition
+        template = dev.get_template()
+        if template is None:
+            err = 'no template found on device'
+            if not self._connected:
+                self.publish_connection_status(False, err)
+            return False
+        print("Current device template:", template)
+
         self.device = dev
+        self.template = template
         self._connected = True
         self.publish_connection_status(True, None)
         return True
@@ -104,7 +116,6 @@ class PupilNeonAgent:
         try:
             scene_camera = self.device.world_sensor()
             connected = False if scene_camera is None else scene_camera.connected
-            print("Scene camera connected:", connected)
             
             if self._connected and not connected:
                 self._connected = False
@@ -150,7 +161,7 @@ class PupilNeonAgent:
             
             # Estimate time offset with timeout
             try:
-                print("Calling estimate_time_offset()...")
+                print("Estimating time offset...")
                 
                 # Call estimate with timeout using threading
                 result_container = []
@@ -192,9 +203,6 @@ class PupilNeonAgent:
                 std_rt = float(estimate.roundtrip_duration_ms.std)
                 med_rt = float(estimate.roundtrip_duration_ms.median)
                 
-                print(f"Estimated time offset (ms): mean={mean_to:.2f}, std={std_to:.2f}, median={med_to:.2f}")
-                print(f"Estimated roundtrip duration (ms): mean={mean_rt:.2f}, std={std_rt:.2f}, median={med_rt:.2f}")
-                
                 self._publish_offset_stats(mean_to, std_to, med_to, mean_rt, std_rt, med_rt)
                 
             except Exception as e:
@@ -231,6 +239,56 @@ class PupilNeonAgent:
         if self._health_thread:
             self._health_thread.join(timeout=1.0)
 
+    def fill_template(self, subject_id=0, session_id=0, acquisition_id=0):
+        """Fill template with subject/session info and send to device."""
+        if self.device is None or self.template is None:
+            print("Cannot fill template: device or template not available")
+            return
+        template_data = self.device.get_template_data()  # Refresh template before filling
+        print(f"Current template data before filling: {template_data}")
+
+        print(f"Filling template with subject_id={subject_id}, session_id={session_id}, acquisition_id={acquisition_id}")
+        questionnaire = {}
+        if self.template:
+            try:
+                for item in self.template.items:
+                    print(f"Processing template item: {item}")
+                    question = self.template.get_question_by_id(item.id)
+                    if item.title == "Subject ID":
+                        template_input = str(subject_id)
+                    elif item.title == "Session ID":
+                        template_input = str(session_id)
+                    elif item.title == "Acquisition ID":
+                        template_input = str(acquisition_id)
+
+                    print(f"Validating input for '{item.title}': {template_input}")
+                    try:
+                        errors = question.validate_answer(template_input)
+                        if not errors:
+                            questionnaire[str(item.id)] = template_input
+                            print(f"Added '{item.title}' to questionnaire with value: {template_input}")
+                        else:
+                            print(f"Errors: {errors}")
+                    except InvalidTemplateAnswersError as e:
+                        print(f"Validation failed for: {template_input}")
+                        for error in e.errors:
+                            print(f"    {error['msg']}")
+            except Exception as e:
+                print(f"Error filling template: {e}")
+                return
+            
+        print(f"Filled questionnaire: {questionnaire}")
+        try:
+            # Sending the template
+            if questionnaire:
+                self.device.post_template_data(questionnaire)
+        except Exception as e:
+            print(f"Error sending filled template: {e}")
+            return
+            
+        print(f"Sent filled template for subject_id={subject_id}, session_id={session_id}, acquisition_id={acquisition_id}")
+       
+
     def run(self):
         """Main run loop - wait for connect/disconnect commands."""
         self.running = True
@@ -243,7 +301,6 @@ class PupilNeonAgent:
                     continue
 
                 topic, message = self.agent.last_message()
-                print(f"Received message on topic '{topic}': {message}")
                 
                 if not isinstance(message, dict):
                     continue
@@ -266,6 +323,26 @@ class PupilNeonAgent:
                     print("Received pupil_neon_disconnect command")
                     self.stop_health_loop()
                     self.disconnect_device()
+
+                elif cmd == 'condition':
+                    label = message.get('label', 'NA')
+                    print(f"Received condition command with label: {label}")
+                    if self._connected and self.device is not None:
+                        self.device.send_event(label)
+
+                elif cmd == 'start':
+                    subject_id = message.get('subject_id', -1)
+                    session_id = message.get('session_id', -1)
+                    acquisition_id = message.get('id', -1)
+                    print(f"Received start command with subject_id: {subject_id}, session_id: {session_id}, acquisition_id: {acquisition_id}")
+                    if self._connected and self.device is not None:
+                        self.fill_template(subject_id, session_id, acquisition_id)
+                        self.device.recording_start()
+
+                elif cmd == 'stop':
+                    print("Received stop command")
+                    if self._connected and self.device is not None:
+                        self.device.recording_stop_and_save()
 
         except KeyboardInterrupt:
             pass

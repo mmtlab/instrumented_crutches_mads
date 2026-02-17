@@ -130,13 +130,16 @@ public:
         // No action needed for set_offset in HDF5 sink
         return return_type::retry;
       }
+      else if (action == "condition") {
+        // just continue, we log the condition but do not change the recording state
+      }
       else {
         _error = "Invalid command or state for command: " + action;
         return return_type::retry;
       }
     }
 
-    if (_recording && topic != "command") {
+    if (_recording) {
       if (std::find(_converter.groups().begin(), _converter.groups().end(), topic) == _converter.groups().end()) {
         _error = "Topic '" + topic + "' not found in keypaths.";
         return return_type::warning;

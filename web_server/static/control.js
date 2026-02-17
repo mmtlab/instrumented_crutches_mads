@@ -15,7 +15,8 @@
         currentAcquisitionId: null,
         currentStatus: 'idle',
         timerInterval: null,
-        startTime: null
+        startTime: null,
+        currentConditionId: null
     };
     
     // DOM elements
@@ -69,7 +70,8 @@
     };
     
     // Application state - add current condition
-    state.currentCondition = 'walking'; // Default condition;
+    state.currentCondition = null; // No default condition on startup
+    state.currentConditionId = null;
     state.eyetrackerConnected = false; // Eye-tracker connection state
 
     
@@ -482,6 +484,11 @@
                 crutch_height: elements.crutchHeight.value ? parseInt(elements.crutchHeight.value) : null
             };
             
+            // Add current condition ID
+            if (state.currentConditionId) {
+                testConfig.condition_id = state.currentConditionId;
+            }
+            
             // Add comment if present
             const comment = elements.commentText.value.trim();
             if (comment) {
@@ -542,6 +549,8 @@
             
             if (data.status === 'stopped') {
                 state.currentStatus = 'stopped';
+                state.currentCondition = null; // Reset condition after stop
+                state.currentConditionId = null;
                 stopTimer();
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
@@ -855,7 +864,7 @@
             const acquisitions = data.acquisitions;
             
             if (acquisitions.length === 0) {
-                state.currentCondition = 'walking'; // Default
+                state.currentCondition = null; // No condition yet
                 return;
             }
             
@@ -865,7 +874,7 @@
             // Try to get the last condition from the most recent acquisition
             const response2 = await fetch(`${API_BASE}/acquisitions/${lastAcq.id}`);
             if (!response2.ok) {
-                state.currentCondition = 'walking';
+                state.currentCondition = null;
                 return;
             }
             
@@ -874,20 +883,48 @@
             // Check if there are conditions recorded
             if (acqData.conditions && acqData.conditions.length > 0) {
                 const lastCondition = acqData.conditions[acqData.conditions.length - 1];
-                state.currentCondition = lastCondition.condition;
+                const lastId = lastCondition.condition_id || '';
+                if (lastId) {
+                    state.currentConditionId = lastId;
+                    state.currentCondition = lastCondition.condition || lastId;
+                } else {
+                    state.currentCondition = lastCondition.condition;
+                    const resolvedId = resolveConditionIdByLabel(state.currentCondition);
+                    if (resolvedId) {
+                        state.currentConditionId = resolvedId;
+                    }
+                }
             } else {
-                state.currentCondition = 'walking'; // Default
+                state.currentCondition = null; // No condition recorded
             }
             
+            if (!state.currentConditionId && state.currentCondition) {
+                const resolvedId = resolveConditionIdByLabel(state.currentCondition);
+                if (resolvedId) {
+                    state.currentConditionId = resolvedId;
+                }
+            }
             updateUI();
         } catch (error) {
             console.error('Load last condition error:', error);
-            state.currentCondition = 'walking'; // Default
+            state.currentCondition = null; // No condition on error
             updateUI();
         }
     }
     let conditionsConfig = [];
     
+    function resolveConditionLabelById(conditionId) {
+        if (!conditionId) return '';
+        const match = conditionsConfig.find(item => item.id === conditionId);
+        return match ? match.label : '';
+    }
+
+    function resolveConditionIdByLabel(conditionLabel) {
+        if (!conditionLabel) return '';
+        const match = conditionsConfig.find(item => item.label === conditionLabel);
+        return match ? match.id : '';
+    }
+
     async function loadConditions() {
         try {
             const response = await fetch('/static/conditions.json');
@@ -895,6 +932,18 @@
             
             const data = await response.json();
             conditionsConfig = data.conditions;
+
+            if (state.currentConditionId) {
+                const label = resolveConditionLabelById(state.currentConditionId);
+                if (label) {
+                    state.currentCondition = label;
+                }
+            } else if (state.currentCondition) {
+                const id = resolveConditionIdByLabel(state.currentCondition);
+                if (id) {
+                    state.currentConditionId = id;
+                }
+            }
             
             // Render condition buttons in the modal
             elements.conditionsGrid.innerHTML = '';
@@ -935,7 +984,7 @@
         const buttons = elements.conditionsGrid.querySelectorAll('.condition-btn');
         buttons.forEach(btn => {
             const matchesLabel = btn.dataset.conditionLabel === state.currentCondition;
-            const matchesId = btn.dataset.conditionId === state.currentCondition;
+            const matchesId = btn.dataset.conditionId === state.currentConditionId;
             btn.classList.toggle('selected', matchesLabel || matchesId);
         });
     }
@@ -956,15 +1005,19 @@
     // Select a condition
     async function selectCondition(conditionId, conditionLabel) {
         try {
+            if (conditionId === state.currentConditionId || conditionLabel === state.currentCondition) {
+                return;
+            }
             // Update local state immediately
             state.currentCondition = conditionLabel;
+            state.currentConditionId = conditionId;
             updateUI();
             updateConditionButtonSelection();
             
             const response = await fetch(`${API_BASE}/save_condition`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ condition: conditionLabel })
+                body: JSON.stringify({ condition: conditionLabel, condition_id: conditionId })
             });
             
             if (!response.ok) {
