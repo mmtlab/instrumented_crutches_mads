@@ -8,8 +8,7 @@ Se non ci pensa e parla va. Valutazione dell’attività verbale in futuro?
 IN FUTURO PENSIAMO DI ANALIZZARE L'AUDIO DEI PUPIL
 
 Gestire visualizzazione e download di file pesanti.
-Gestisci il download di ogni sensore se presente nel file: time offset neon, forza tip, forza handle, ppg, info
-Scaricali nel formato subject_#_session_#_acq_#
+DOVREBBE FUNZIONARE GIA', MA E' DA VERIFICARE
 
 Gestire il lancio del service dell'interfaccia e poi dell'error_handler prima degli altri nodi OPPURE All'avvio del web_server (o quando serve) gli agenti devono mandare un messaggio del proprio stato nel topic di pubblicazione per dire che va tutto bene. Status_handler deve gestirli e mandarli in status 
 

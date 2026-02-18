@@ -846,6 +846,29 @@ canvas {
     justify-content: center;
 }
 
+/* Error dialog - blue background like control panel */
+.error-dialog {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+}
+
+.error-dialog-content {
+    background-color: #ffffff;
+    max-width: 500px;
+    width: 90%;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
 .modal.open {
     display: flex;
 }

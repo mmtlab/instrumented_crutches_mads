@@ -25,7 +25,8 @@ class PupilNeonAgent:
         self.agent.set_id("pupil_neon")
         self.agent.set_settings_timeout(2000)
         if self.agent.init() != 0:
-            raise RuntimeError("Cannot contact MADS broker")
+            sys.stderr.write("Cannot contact broker\n")
+            sys.exit
         self.agent.connect()
         self.agent.set_receive_timeout(200)
 
@@ -348,30 +349,35 @@ class PupilNeonAgent:
             pass
         finally:
             self.stop_health_loop()
-            try:
-                self.agent.disconnect()
-            except Exception:
-                pass
 
 
 def main():
     agent = None
+    exit_code = 0
     try:
         agent = PupilNeonAgent()
         print("Pupil Neon agent started")
         agent.run()
+    except KeyboardInterrupt:
+        exit_code = 0
     except Exception as e:
-        print(f"Error running PupilNeonAgent: {e}", file=sys.stderr)
+        sys.stderr.write(f"Error running PupilNeonAgent: {e}\n")
+        exit_code = 1
     finally:
+        sys.stderr.write("Shutting down PupilNeonAgent\n")
         if agent:
             try:
                 agent.stop_health_loop()
                 if agent._connected:
                     agent.disconnect_device()
-                    agent.publish_connection_status(False, "Agent shutting down")
-            except Exception:
-                pass
-
+                # Publish shutdown status BEFORE disconnecting from broker
+                agent.publish_connection_status(False, "Agent shutting down")
+                time.sleep(0.1)  # Give time for message to be sent
+                agent.agent.disconnect()
+            except Exception as e:
+                sys.stderr.write(f"Error shutting down PupilNeonAgent: {e}\n")
+        
+        sys.exit(exit_code)
 
 if __name__ == '__main__':
     main()

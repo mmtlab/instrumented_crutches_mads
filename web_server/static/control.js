@@ -31,6 +31,10 @@
         offsetBtn: document.getElementById('offset-btn'),
         offsetLeft: document.getElementById('offset-left'),
         offsetRight: document.getElementById('offset-right'),
+        errorDialog: document.getElementById('error-dialog'),
+        errorDialogMessage: document.getElementById('error-dialog-message'),
+        errorDialogIgnore: document.getElementById('error-dialog-ignore'),
+        errorDialogStop: document.getElementById('error-dialog-stop'),
         offsetLeftIndicator: document.getElementById('offset-left-indicator'),
         offsetRightIndicator: document.getElementById('offset-right-indicator'),
         offsetTime: document.getElementById('offset-time'),
@@ -779,6 +783,17 @@
                                            text?.toLowerCase().includes('calibrat');
                     
                     if (feedbackType === 'error' || feedbackType === 'warning') {
+                        // Check if conditions modal is open and this is a critical error
+                        const isConditionsModalOpen = elements.conditionsModal.classList.contains('open');
+                        const isCriticalError = (level === 'error' || level === 'critical' || level === 'fatal');
+                        
+                        if (isConditionsModalOpen && isCriticalError) {
+                            // Show error dialog instead of persistent message
+                            showErrorDialog(messageText);
+                            console.log(`⚠️ Showed error dialog during condition selection`);
+                            return;
+                        }
+                        
                         // Persistent message (with close button)
                         const targetContainer = isOffsetRelated ? 
                             elements.offsetFeedbackContainer : 
@@ -1002,6 +1017,30 @@
         document.body.style.overflow = '';
     }
     
+    // Show error dialog
+    function showErrorDialog(message) {
+        elements.errorDialogMessage.textContent = message;
+        elements.errorDialog.style.display = 'flex';
+    }
+    
+    // Close error dialog
+    function closeErrorDialog() {
+        elements.errorDialog.style.display = 'none';
+    }
+    
+    // Handle error dialog ignore
+    async function handleErrorIgnore() {
+        closeErrorDialog();
+        // Keep conditions modal open - don't close it
+    }
+    
+    // Handle error dialog stop acquisition
+    async function handleErrorStop() {
+        closeErrorDialog();
+        closeConditionsModal(); // Close conditions modal and return to control panel
+        await stopAcquisition();
+    }
+    
     // Select a condition
     async function selectCondition(conditionId, conditionLabel) {
         try {
@@ -1106,6 +1145,8 @@
     
     elements.startBtn.addEventListener('click', startAcquisition);
     elements.stopBtn.addEventListener('click', stopAcquisition);
+    elements.errorDialogIgnore.addEventListener('click', handleErrorIgnore);
+    elements.errorDialogStop.addEventListener('click', handleErrorStop);
     
     // Initialize on page load
     checkStatus();

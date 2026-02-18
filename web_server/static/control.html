@@ -204,6 +204,18 @@
         </div>
     </div>
 
+    <!-- Error Dialog -->
+    <div id="error-dialog" class="error-dialog" style="display: none;">
+        <div class="error-dialog-content">
+            <h2 style="margin-top: 0; color: #dc2626;">⚠ Error During Acquisition</h2>
+            <p id="error-dialog-message" style="margin: 16px 0; line-height: 1.5; color: #1e293b;"></p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                <button id="error-dialog-ignore" class="btn">Ignore</button>
+                <button id="error-dialog-stop" class="btn btn-stop">Stop Acquisition</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/navbar.js"></script>
     <script src="/static/control.js"></script>
     
