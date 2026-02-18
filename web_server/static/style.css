@@ -487,15 +487,173 @@ h2 {
     background-color: var(--danger-hover);
 }
 
-.btn:not(.btn-start):not(.btn-stop) {
+.btn:not(.btn-start):not(.btn-stop):not(.btn-secondary) {
     background-color: var(--primary);
     color: white;
     border-color: transparent;
 }
 
-.btn:not(.btn-start):not(.btn-stop):hover:not(:disabled) {
+.btn:not(.btn-start):not(.btn-stop):not(.btn-secondary):hover:not(:disabled) {
     background-color: var(--primary-hover);
 }
+
+.btn-secondary {
+    background-color: #e2e8f0;
+    color: #1f2937;
+    border-color: #cbd5e1;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: #cbd5e1;
+}
+
+/* Download tree layout */
+.download-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+
+.download-action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.download-selection {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.tree-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tree-node {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel-bg);
+    padding: 12px 14px;
+}
+
+.tree-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.tree-toggle-btn {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease;
+}
+
+.tree-toggle-btn:hover {
+    color: var(--primary);
+}
+
+.tree-toggle-btn.collapsed::before {
+    content: '+';
+    position: absolute;
+}
+
+.tree-children.collapsed {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    transition: max-height 0.2s ease, opacity 0.15s ease, padding 0.2s ease, margin 0.2s ease;
+}
+
+.tree-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.tree-label input {
+    width: 16px;
+    height: 16px;
+}
+
+.tree-meta {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.tree-children {
+    margin-top: 10px;
+    padding-left: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-left: 1px dashed var(--border);
+}
+
+.tree-session {
+    background: #f8fafc;
+}
+
+.tree-leaf {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.tree-leaf-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    cursor: pointer;
+}
+
+.tree-leaf-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tree-leaf-primary {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.tree-leaf-secondary {
+    font-size: 12px;
+    color: var(--muted);
+}
+
 
 /* Select dropdown */
 .select {

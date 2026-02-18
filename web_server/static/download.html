@@ -31,7 +31,16 @@
 
         <div class="section">
             <h2>Available Acquisitions</h2>
-            <div id="acquisition-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="download-actions">
+                <div class="download-selection" aria-live="polite">
+                    Selected: <span id="selected-count">0</span>
+                </div>
+                <div class="download-action-buttons">
+                    <button id="download-selected-btn" class="btn">⬇ Download Selected</button>
+                    <button id="clear-selected-btn" class="btn btn-secondary">Clear Selection</button>
+                </div>
+            </div>
+            <div id="acquisition-list" class="tree-list">
                 <!-- Dynamically populated -->
             </div>
         </div>

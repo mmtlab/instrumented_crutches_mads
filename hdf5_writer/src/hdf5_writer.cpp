@@ -163,7 +163,7 @@ public:
     // provide sensible defaults for the parameters by setting e.g.
     _params["keypath_sep"] = "."; // Default keypath separator
     _params["sensor"] = "unknown";
-    _params["folder_path"] = "./data/";
+    _params["folder_path"] = "./fallback_data/";
     
     // then merge the defaults with the actually provided parameters
     // params needs to be cast to json

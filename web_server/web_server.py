@@ -21,6 +21,8 @@ import h5py
 import numpy as np
 import uvicorn
 from dateutil import parser as date_parser
+import zipfile
+import tempfile
 
 # Initialize MADS agent
 mads_path = subprocess.check_output(["mads", "-p"], text=True).strip()
@@ -816,6 +818,12 @@ async def download_force_csv(acquisition_id: str):
     if acquisition_id not in acquisitions:
         raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
     
+    acq = acquisitions[acquisition_id]
+    test_config = acq.get('test_config', {})
+    subject_id = test_config.get('subject_id', 'unknown')
+    session_id = test_config.get('session_id', 'unknown')
+    acq_num = acquisition_id.replace('acq_', '')
+    
     # Read HDF5 data directly to get absolute timestamps
     path = data_file_path(acquisition_id)
     if not path.exists():
@@ -861,9 +869,26 @@ async def download_force_csv(acquisition_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read HDF5 file: {str(e)}")
     
-    # Convert milliseconds to nanoseconds epoch
-    ts_left_ns = [int(ts * 1_000_000) for ts in ts_left_ms]
-    ts_right_ns = [int(ts * 1_000_000) for ts in ts_right_ms]
+    # Convert milliseconds to nanoseconds epoch - handle non-numeric timestamps
+    ts_left_ns = []
+    try:
+        for ts in ts_left_ms:
+            if isinstance(ts, (bytes, str)):
+                ts_left_ns.append(0)
+            else:
+                ts_left_ns.append(int(float(ts) * 1_000_000))
+    except (TypeError, ValueError):
+        ts_left_ns = []
+    
+    ts_right_ns = []
+    try:
+        for ts in ts_right_ms:
+            if isinstance(ts, (bytes, str)):
+                ts_right_ns.append(0)
+            else:
+                ts_right_ns.append(int(float(ts) * 1_000_000))
+    except (TypeError, ValueError):
+        ts_right_ns = []
     
     # Synchronize data using linear interpolation on nanosecond timestamps
     def interpolate(x, x_data, y_data):
@@ -895,10 +920,11 @@ async def download_force_csv(acquisition_id: str):
     
     output.seek(0)
     
+    filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_tip_force.csv"
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=force_{acquisition_id}.csv"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
@@ -911,6 +937,10 @@ async def download_info_csv(acquisition_id: str):
         raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
     
     acq = acquisitions[acquisition_id]
+    test_config = acq.get('test_config', {})
+    subject_id = test_config.get('subject_id', 'unknown')
+    session_id = test_config.get('session_id', 'unknown')
+    acq_num = acquisition_id.replace('acq_', '')
     
     # Create CSV in memory
     output = io.StringIO()
@@ -927,10 +957,10 @@ async def download_info_csv(acquisition_id: str):
     writer.writerow([])
     
     # Test configuration
-    test_config = acq.get('test_config', {})
     if test_config:
         writer.writerow(['Test Configuration'])
         writer.writerow(['Subject ID', test_config.get('subject_id', '')])
+        writer.writerow(['Session ID', test_config.get('session_id', '')])
         writer.writerow(['Height (cm)', test_config.get('height_cm', '')])
         writer.writerow(['Weight (kg)', test_config.get('weight_kg', '')])
         writer.writerow(['Crutch Height', test_config.get('crutch_height', '')])
@@ -960,11 +990,552 @@ async def download_info_csv(acquisition_id: str):
     
     output.seek(0)
     
+    filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_info.csv"
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=info_{acquisition_id}.csv"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@app.get("/download/handle-force/{acquisition_id}")
+async def download_handle_force_csv(acquisition_id: str):
+    """Download handle force data as CSV: timestamp (ns epoch), left (N), right (N)"""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    test_config = acq.get('test_config', {})
+    subject_id = test_config.get('subject_id', 'unknown')
+    session_id = test_config.get('session_id', 'unknown')
+    acq_num = acquisition_id.replace('acq_', '')
+    
+    # Read HDF5 data
+    path = data_file_path(acquisition_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Data file not found for {acquisition_id}")
+    
+    try:
+        with h5py.File(path, 'r') as f:
+            has_left = '/handle_loadcell/force.left' in f
+            has_right = '/handle_loadcell/force.right' in f
+            has_ts_left = '/handle_loadcell/time.left' in f
+            has_ts_right = '/handle_loadcell/time.right' in f
+            
+            if not has_left and not has_right:
+                raise HTTPException(status_code=400, detail="No handle_loadcell data found in HDF5 file")
+            
+            left_data = []
+            right_data = []
+            ts_left_ms = []
+            ts_right_ms = []
+            
+            if has_left and has_ts_left:
+                left_data = f['/handle_loadcell/force.left'][:].tolist()
+                ts_left_ms = f['/handle_loadcell/time.left'][:].tolist()
+            
+            if has_right and has_ts_right:
+                right_data = f['/handle_loadcell/force.right'][:].tolist()
+                ts_right_ms = f['/handle_loadcell/time.right'][:].tolist()
+            
+            if not left_data and not right_data:
+                raise HTTPException(status_code=400, detail="HDF5 file contains no handle force data")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read HDF5 file: {str(e)}")
+    
+    # Convert milliseconds to nanoseconds epoch - handle non-numeric timestamps
+    ts_left_ns = []
+    try:
+        for ts in ts_left_ms:
+            if isinstance(ts, (bytes, str)):
+                ts_left_ns.append(0)
+            else:
+                ts_left_ns.append(int(float(ts) * 1_000_000))
+    except (TypeError, ValueError):
+        ts_left_ns = []
+    
+    ts_right_ns = []
+    try:
+        for ts in ts_right_ms:
+            if isinstance(ts, (bytes, str)):
+                ts_right_ns.append(0)
+            else:
+                ts_right_ns.append(int(float(ts) * 1_000_000))
+    except (TypeError, ValueError):
+        ts_right_ns = []
+    
+    # Synchronize data using linear interpolation
+    def interpolate(x, x_data, y_data):
+        """Linear interpolation"""
+        if not x_data or not y_data:
+            return None
+        if x <= x_data[0]:
+            return y_data[0]
+        if x >= x_data[-1]:
+            return y_data[-1]
+        for i in range(len(x_data) - 1):
+            if x_data[i] <= x <= x_data[i + 1]:
+                t = (x - x_data[i]) / (x_data[i + 1] - x_data[i])
+                return y_data[i] + t * (y_data[i + 1] - y_data[i])
+        return None
+    
+    all_ts_ns = sorted(set(ts_left_ns + ts_right_ns))
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['timestamp_ns', 'left_handle_N', 'right_handle_N'])
+    
+    for ts_ns in all_ts_ns:
+        left_val = interpolate(ts_ns, ts_left_ns, left_data) if ts_left_ns and left_data else 0.0
+        right_val = interpolate(ts_ns, ts_right_ns, right_data) if ts_right_ns and right_data else 0.0
+        writer.writerow([ts_ns, f"{left_val:.2f}", f"{right_val:.2f}"])
+    
+    output.seek(0)
+    
+    filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_handle_force.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.get("/download/cardiac-frequency/{acquisition_id}")
+async def download_cardiac_frequency_csv(acquisition_id: str):
+    """Download cardiac frequency / PPG data as CSV"""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    test_config = acq.get('test_config', {})
+    subject_id = test_config.get('subject_id', 'unknown')
+    session_id = test_config.get('session_id', 'unknown')
+    acq_num = acquisition_id.replace('acq_', '')
+    
+    path = data_file_path(acquisition_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Data file not found for {acquisition_id}")
+    
+    try:
+        with h5py.File(path, 'r') as f:
+            # Try to find PPG data
+            ppg_data = None
+            ppg_ts = None
+            
+            if '/ppg' in f:
+                if 'data' in f['/ppg']:
+                    ppg_data = f['/ppg/data'][:].tolist()
+                    if 'timestamp' in f['/ppg']:
+                        ppg_ts = f['/ppg/timestamp'][:].tolist()
+                    elif 'time' in f['/ppg']:
+                        ppg_ts = f['/ppg/time'][:].tolist()
+                else:
+                    # /ppg is a group without 'data' key, find first dataset
+                    ppg_group = f['/ppg']
+                    dataset_keys = [k for k in ppg_group.keys() if isinstance(ppg_group[k], h5py.Dataset)]
+                    if dataset_keys:
+                        ppg_data = ppg_group[dataset_keys[0]][:].tolist()
+                        # Try to find timestamps
+                        for ts_name in ['timestamp', 'time', 'ts']:
+                            if ts_name in ppg_group:
+                                ppg_ts = ppg_group[ts_name][:].tolist()
+                                break
+            elif '/cardiac' in f:
+                if 'data' in f['/cardiac']:
+                    ppg_data = f['/cardiac/data'][:].tolist()
+                    if 'timestamp' in f['/cardiac']:
+                        ppg_ts = f['/cardiac/timestamp'][:].tolist()
+                    elif 'time' in f['/cardiac']:
+                        ppg_ts = f['/cardiac/time'][:].tolist()
+                else:
+                    # /cardiac is a group without 'data' key, find first dataset
+                    cardiac_group = f['/cardiac']
+                    dataset_keys = [k for k in cardiac_group.keys() if isinstance(cardiac_group[k], h5py.Dataset)]
+                    if dataset_keys:
+                        ppg_data = cardiac_group[dataset_keys[0]][:].tolist()
+                        for ts_name in ['timestamp', 'time', 'ts']:
+                            if ts_name in cardiac_group:
+                                ppg_ts = cardiac_group[ts_name][:].tolist()
+                                break
+            
+            if not ppg_data:
+                raise HTTPException(status_code=400, detail="No PPG/cardiac data found in HDF5 file")
+            
+            if not ppg_ts:
+                # Generate timestamps if not available
+                ppg_ts = list(range(len(ppg_data)))
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Cardiac frequency error: {str(e)}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Failed to read cardiac frequency data: {str(e)}")
+    
+    # Convert milliseconds to nanoseconds if needed - handle non-numeric timestamps
+    ts_ns = []
+    try:
+        for i, ts in enumerate(ppg_ts):
+            if isinstance(ts, (bytes, str)):
+                ts_ns.append(i)
+            else:
+                try:
+                    ts_val = float(ts)
+                    if ts_val > 1e9:
+                        ts_ns.append(int(ts_val * 1_000_000))
+                    else:
+                        ts_ns.append(int(ts_val * 1e6))
+                except (TypeError, ValueError):
+                    ts_ns.append(i)
+    except Exception as e:
+        print(f"[Cardiac] Timestamp conversion failed, using indices: {e}", file=sys.stderr)
+        ts_ns = list(range(len(ppg_ts)))
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['timestamp_ns', 'ppg_value'])
+    
+    for ts, val in zip(ts_ns, ppg_data):
+        writer.writerow([ts, f"{val:.2f}"])
+    
+    output.seek(0)
+    
+    filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_cardiac_frequency.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.get("/download/eye-tracker/{acquisition_id}")
+async def download_eye_tracker_csv(acquisition_id: str):
+    """Download eye tracker / pupil_neon data as CSV with specific columns"""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    test_config = acq.get('test_config', {})
+    subject_id = test_config.get('subject_id', 'unknown')
+    session_id = test_config.get('session_id', 'unknown')
+    acq_num = acquisition_id.replace('acq_', '')
+    
+    path = data_file_path(acquisition_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Data file not found for {acquisition_id}")
+    
+    try:
+        with h5py.File(path, 'r') as f:
+            if '/pupil_neon' not in f:
+                raise HTTPException(status_code=400, detail="No pupil_neon data found in HDF5 file")
+            
+            neon_group = f['/pupil_neon']
+            print(f"[Eye tracker] /pupil_neon keys: {list(neon_group.keys())}", file=sys.stderr)
+            
+            # Required columns - in order
+            required_cols = [
+                "time_offset_ms_mean", "time_offset_ms_std", "time_offset_ms_median",
+                "roundtrip_duration_ms_mean", "roundtrip_duration_ms_std", "roundtrip_duration_ms_median",
+                "timestamp", "timecode"
+            ]
+            
+            # Check which columns are available and read them
+            available_cols = []
+            col_data = {}
+            
+            for col in required_cols:
+                if col in neon_group:
+                    col_data[col] = neon_group[col][:].tolist()
+                    available_cols.append(col)
+                    print(f"[Eye tracker] Loaded {col}: {len(col_data[col])} samples", file=sys.stderr)
+            
+            if not available_cols:
+                raise HTTPException(status_code=400, detail=f"No required columns found. Available: {list(neon_group.keys())}")
+            
+            # Find number of rows (should be same for all columns)
+            num_rows = len(col_data[available_cols[0]]) if available_cols else 0
+            print(f"[Eye tracker] Total rows: {num_rows}", file=sys.stderr)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[Eye tracker ERROR] {str(e)}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Failed to read eye tracker data: {str(e)}")
+    
+    # Build CSV output
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow(available_cols)
+    
+    # Write data rows
+    for row_idx in range(num_rows):
+        row_data = []
+        for col in available_cols:
+            val = col_data[col][row_idx]
+            
+            # Handle different data types
+            if isinstance(val, (bytes, np.bytes_)):
+                row_data.append(val.decode('utf-8', errors='ignore') if isinstance(val, bytes) else str(val))
+            elif isinstance(val, (float, np.floating)):
+                row_data.append(f"{val:.6f}")
+            elif isinstance(val, (int, np.integer)):
+                row_data.append(str(val))
+            else:
+                row_data.append(str(val))
+        writer.writerow(row_data)
+    
+    output.seek(0)
+    
+    filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_eye_tracker.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.get("/download/available-sensors/{acquisition_id}")
+async def get_available_sensors(acquisition_id: str):
+    """Get list of available sensors for an acquisition from HDF5 file"""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    path = data_file_path(acquisition_id)
+    
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Data file not found for {acquisition_id}")
+    
+    sensors = {"info": True}  # info is always available
+    
+    try:
+        with h5py.File(path, 'r') as f:
+            # Check for tip_loadcell
+            if '/tip_loadcell/force.left' in f or '/tip_loadcell/force.right' in f or '/loadcell/left' in f or '/loadcell/right' in f:
+                sensors["tip_force"] = True
+            
+            # Check for handle_loadcell
+            if '/handle_loadcell/force.left' in f or '/handle_loadcell/force.right' in f:
+                sensors["handle_force"] = True
+            
+            # Check for PPG (cardiac_frequency)
+            if '/ppg' in f or '/cardiac' in f:
+                sensors["cardiac_frequency"] = True
+            
+            # Check for eye_tracker (pupil_neon)
+            if '/pupil_neon' in f or '/eye_tracker' in f:
+                sensors["eye_tracker"] = True
+    except Exception as e:
+        print(f"Warning: Could not read HDF5 sensors: {e}", file=sys.stderr)
+    
+    return {"sensors": list(sensors.keys()), "acquisition_id": acquisition_id}
+
+
+@app.get("/download/sensors/{acquisition_id}")
+async def download_sensors_bundle(acquisition_id: str):
+    """Download all available sensors. If total size > 10MB, returns ZIP. Otherwise returns JSON with individual download links."""
+    acquisitions = load_index()
+    
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    test_config = acq.get('test_config', {})
+    subject_id = test_config.get('subject_id', 'unknown')
+    session_id = test_config.get('session_id', 'unknown')
+    acq_num = acquisition_id.replace('acq_', '')
+    
+    path = data_file_path(acquisition_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Data file not found for {acquisition_id}")
+    
+    # Get available sensors
+    sensors = {"info": True}
+    try:
+        with h5py.File(path, 'r') as f:
+            if '/tip_loadcell/force.left' in f or '/tip_loadcell/force.right' in f or '/loadcell/left' in f or '/loadcell/right' in f:
+                sensors["tip_force"] = True
+            if '/handle_loadcell/force.left' in f or '/handle_loadcell/force.right' in f:
+                sensors["handle_force"] = True
+            if '/ppg' in f or '/cardiac' in f:
+                sensors["cardiac_frequency"] = True
+            if '/pupil_neon' in f or '/eye_tracker' in f:
+                sensors["eye_tracker"] = True
+    except Exception as e:
+        print(f"Warning: Could not detect all sensors: {e}", file=sys.stderr)
+    
+    # Estimate total file size
+    total_size_bytes = 0
+    try:
+        # Get HDF5 file size (rough estimate)
+        if path.exists():
+            total_size_bytes += path.stat().st_size
+        else:
+            total_size_bytes += 1_000_000  # Rough estimate of HDF5 size
+    except:
+        pass
+    
+    # If total size > 10MB (10485760 bytes), create ZIP
+    size_threshold = 10 * 1024 * 1024  # 10MB
+    
+    if total_size_bytes > size_threshold:
+        # Create ZIP with all available sensors
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            files_to_zip = []
+            
+            try:
+                # Generate info CSV
+                output = io.StringIO()
+                writer = csv.writer(output)
+                writer.writerow(['Field', 'Value'])
+                writer.writerow(['Acquisition ID', acquisition_id])
+                writer.writerow(['Status', acq.get('status', '')])
+                writer.writerow(['Start Time', acq.get('start_time', '')])
+                writer.writerow(['End Time', acq.get('end_time', '')])
+                writer.writerow(['Duration (s)', acq.get('duration', '')])
+                writer.writerow(['Samples', acq.get('samples', '')])
+                writer.writerow([])
+                
+                if test_config:
+                    writer.writerow(['Test Configuration'])
+                    writer.writerow(['Subject ID', test_config.get('subject_id', '')])
+                    writer.writerow(['Height (cm)', test_config.get('height_cm', '')])
+                    writer.writerow(['Weight (kg)', test_config.get('weight_kg', '')])
+                    writer.writerow(['Crutch Height', test_config.get('crutch_height', '')])
+                    writer.writerow([])
+                
+                comments = acq.get('comments', [])
+                if comments:
+                    writer.writerow(['Comments'])
+                    writer.writerow(['Timestamp', 'Comment'])
+                    for comment in comments:
+                        if isinstance(comment, dict):
+                            writer.writerow([comment.get('timestamp', ''), comment.get('text', '')])
+                        else:
+                            writer.writerow(['', str(comment)])
+                    writer.writerow([])
+                
+                conditions = acq.get('conditions', [])
+                if conditions:
+                    writer.writerow(['Conditions'])
+                    writer.writerow(['Timestamp', 'Condition'])
+                    for condition in conditions:
+                        writer.writerow([condition.get('timestamp', ''), condition.get('condition', '')])
+                
+                info_filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_info.csv"
+                info_path = tmpdir_path / info_filename
+                info_path.write_text(output.getvalue())
+                files_to_zip.append((info_filename, info_path))
+                
+                # Generate tip_force CSV if available
+                if "tip_force" in sensors:
+                    try:
+                        with h5py.File(path, 'r') as f:
+                            has_left = '/tip_loadcell/force.left' in f or '/loadcell/left' in f
+                            has_right = '/tip_loadcell/force.right' in f or '/loadcell/right' in f
+                            has_ts_left = '/tip_loadcell/time.left' in f or '/loadcell/ts_left' in f
+                            has_ts_right = '/tip_loadcell/time.right' in f or '/loadcell/ts_right' in f
+                            
+                            left_data, right_data, ts_left_ms, ts_right_ms = [], [], [], []
+                            
+                            if has_left and has_ts_left:
+                                if '/tip_loadcell/force.left' in f:
+                                    left_data = f['/tip_loadcell/force.left'][:].tolist()
+                                    ts_left_ms = f['/tip_loadcell/time.left'][:].tolist()
+                                else:
+                                    left_data = f['/loadcell/left'][:].tolist()
+                                    ts_left_ms = f['/loadcell/ts_left'][:].tolist()
+                            
+                            if has_right and has_ts_right:
+                                if '/tip_loadcell/force.right' in f:
+                                    right_data = f['/tip_loadcell/force.right'][:].tolist()
+                                    ts_right_ms = f['/tip_loadcell/time.right'][:].tolist()
+                                else:
+                                    right_data = f['/loadcell/right'][:].tolist()
+                                    ts_right_ms = f['/loadcell/ts_right'][:].tolist()
+                            
+                            if left_data or right_data:
+                                ts_left_ns = [int(ts * 1_000_000) for ts in ts_left_ms]
+                                ts_right_ns = [int(ts * 1_000_000) for ts in ts_right_ms]
+                                all_ts_ns = sorted(set(ts_left_ns + ts_right_ns))
+                                
+                                def interpolate(x, x_data, y_data):
+                                    if not x_data or not y_data or x <= x_data[0]:
+                                        return y_data[0] if y_data else 0.0
+                                    if x >= x_data[-1]:
+                                        return y_data[-1] if y_data else 0.0
+                                    for i in range(len(x_data) - 1):
+                                        if x_data[i] <= x <= x_data[i + 1]:
+                                            t = (x - x_data[i]) / (x_data[i + 1] - x_data[i])
+                                            return y_data[i] + t * (y_data[i + 1] - y_data[i])
+                                    return 0.0
+                                
+                                output = io.StringIO()
+                                writer = csv.writer(output)
+                                writer.writerow(['timestamp_ns', 'left_crutch_N', 'right_crutch_N'])
+                                
+                                for ts_ns in all_ts_ns:
+                                    left_val = interpolate(ts_ns, ts_left_ns, left_data) if ts_left_ns and left_data else 0.0
+                                    right_val = interpolate(ts_ns, ts_right_ns, right_data) if ts_right_ns and right_data else 0.0
+                                    writer.writerow([ts_ns, f"{left_val:.2f}", f"{right_val:.2f}"])
+                                
+                                force_filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}_tip_force.csv"
+                                force_path = tmpdir_path / force_filename
+                                force_path.write_text(output.getvalue())
+                                files_to_zip.append((force_filename, force_path))
+                    except Exception as e:
+                        print(f"Warning: Could not generate tip_force CSV: {e}", file=sys.stderr)
+                
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to prepare files: {str(e)}")
+            
+            # Create ZIP
+            zip_filename = f"subject_{subject_id}_session_{session_id}_acq_{acq_num}.zip"
+            zip_path = tmpdir_path / zip_filename
+            
+            try:
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for filename, filepath in files_to_zip:
+                        zipf.write(filepath, arcname=filename)
+                
+                # Read ZIP file and return as streaming response
+                zip_content = zip_path.read_bytes()
+                return StreamingResponse(
+                    iter([zip_content]),
+                    media_type="application/zip",
+                    headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to create ZIP: {str(e)}")
+    
+    else:
+        # Return list of available sensors to download individually
+        return {
+            "download_method": "individual",
+            "acquisition_id": acquisition_id,
+            "subject_id": subject_id,
+            "session_id": session_id,
+            "acq_num": acq_num,
+            "sensors": list(sensors.keys()),
+            "total_size_mb": total_size_bytes / (1024 * 1024),
+            "message": "Download individual sensor files"
+        }
 
 
 @app.get("/status")
