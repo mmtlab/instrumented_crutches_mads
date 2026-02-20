@@ -43,3 +43,27 @@ IN FUTURO:
 
 Gestire il controllo dell'avvio dell'acquisizione verificando da status_handler se gli agenti stanno pubblicando messaggi. Basta vedere se mi arriva un messaggio su quel topic.
 
+
+
+Donne con capelli legati per non coprire gli occhiali. Portare una confezione di lacci da lasciare in Larin.
+
+Difficile passare da turning a walking, come possiamo identificare automaticamente? 
+Comandi vocali per le condizioni?
+
+Cavetto occhiali da sistemare per non dare fastidio a paolo e al soggetto 
+
+Spessori per i piedi piccoli perché ballano
+
+Quando parlano con Paolo tendono a girare la testa
+
+
+Fare Manuale d'uso delle stampelle
+Accendi stampella destra
+Accendi cellulare pupil e connettilo alla wifi crutchwifi
+Apri l’app stampelle
+Previ calibrate e verifica che si aggiorni l’offset della destra
+Accendi stampella sinistra e attendi finché si aggiorna l’offset sull’interfaccia
+Solleva entrambe le stampelle e ripremi calibrate
+Collega gli occhiali al cellulare e dopo 5 secondi circa premi connect su eye tracker. Verifica che esca connected
+Correggi l’offset sull’app neon (oppure lo possiamo fare post?) 
+Inserisci i dati attuali di soggetto e sessione

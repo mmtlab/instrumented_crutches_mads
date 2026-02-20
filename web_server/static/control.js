@@ -298,8 +298,8 @@
         if (sideRaw === 'left' || sideRaw === 'right') return sideRaw;
 
         const sourceRaw = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString().toLowerCase();
-        if (sourceRaw.includes('loadcell_left')) return 'left';
-        if (sourceRaw.includes('loadcell_right')) return 'right';
+        if (sourceRaw.includes('tip_loadcell_left')) return 'left';
+        if (sourceRaw.includes('tip_loadcell_right')) return 'right';
         return '';
     }
 
@@ -676,15 +676,15 @@
         const cards = document.querySelectorAll('.node-status-card');
         if (cards.length < 2) return;
         
-        // Find cards by their content (which one contains loadcell_left/right)
+        // Find cards by their content (which one contains tip_loadcell_left/right)
         let leftCard = null;
         let rightCard = null;
         
         cards.forEach(card => {
-            if (card.textContent.includes('loadcell_left')) {
+            if (card.textContent.includes('tip_loadcell_left')) {
                 leftCard = card;
             }
-            if (card.textContent.includes('loadcell_right')) {
+            if (card.textContent.includes('tip_loadcell_right')) {
                 rightCard = card;
             }
         });
