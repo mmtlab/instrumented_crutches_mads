@@ -11,19 +11,7 @@ Gestire visualizzazione e download di file pesanti.
 DOVREBBE FUNZIONARE GIA', MA E' DA VERIFICARE
 
 Gestire il lancio del service dell'interfaccia e poi dell'error_handler prima degli altri nodi OPPURE All'avvio del web_server (o quando serve) gli agenti devono mandare un messaggio del proprio stato nel topic di pubblicazione per dire che va tutto bene. Status_handler deve gestirli e mandarli in status 
-
-Questo per gestire i service all'avvio
-[Unit]
-Description=Service Controller/Loadcell ecc
-After=SERVICE-STATUS_HANDLER.service
-
-[Service]
-Type=simple
-ExecStartPre=/bin/sleep 3
-ExecStart=/usr/local/bin/Service Controller/Loadcell
-
-[Install]
-WantedBy=multi-user.target
+SOLUZIONE IN PROVA: per semplicità voglio lanciare tutti gli agenti al boot senza controllare i service. Ogni agente deve rispondere al comando "health_status" con il campo "health_status" nel json in output. Il campo può contenere valori come "recording", "idle", "connected"
 
 Aggiornare tutti i readme dei sottomoduli
 
@@ -43,6 +31,7 @@ IN FUTURO:
 
 Gestire il controllo dell'avvio dell'acquisizione verificando da status_handler se gli agenti stanno pubblicando messaggi. Basta vedere se mi arriva un messaggio su quel topic.
 
+IMPORTANTE: quando cambia la condizione devo mandare old_condition.end e quando inizia new_condition.begin
 
 
 Donne con capelli legati per non coprire gli occhiali. Portare una confezione di lacci da lasciare in Larin.

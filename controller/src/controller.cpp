@@ -18,6 +18,7 @@
 #include <pugg/Kernel.h>
 
 // other includes as needed here
+#include <chrono>
 
 // Define the name of the plugin
 #ifndef PLUGIN_NAME
@@ -40,82 +41,68 @@ public:
 
   // Implement the actual functionality here
   return_type load_data(json const &input, string topic = "") override {
-
-    if (topic == "agent_event") {
-      _last_agent_event = input;
-      std::cout << "Controller: agent_event received -> " << input.dump() << std::endl;
-      return return_type::success;
-    }
     
-    // if topic is "command", process commands here
-    if (topic == "ws_command") {
-      if (!input.contains("command")) {
-        _error = "Controller: missing command in ws_command payload";
-        return return_type::warning;
-      }
-
-      string action = input["command"];
+    // if topic contains "command", process commands here
+    if (input.contains("command")) {
+    
+      string action = input.value("command", ""); // Get the command, default to empty string if not found
 
       if (action == "start") {
-        if (_acquiring) {
+        if (_recording) {
           _error = "Controller: start requested while already acquiring";
           return return_type::warning;
         }
+
+        // check if id is provided in the input json, if not return an error
         if (!input.contains("id")) {
           _error = "Controller: start command requires an id";
           return return_type::error;
         }
-        if (input.contains("subject_id")) {
-          _subject_id_to_send = input.value("subject_id", -1);
-        }
-        if (input.contains("session_id")) {
-          _session_id_to_send = input.value("session_id", -1);
-        }
+        _id_to_send = input.value("id", -1);
 
+        // check if there are optional fields subject_id and session_id in the input json, if yes, store them to send them with the command
+        _subject_id_to_send = input.value("subject_id", -1);
+        _session_id_to_send = input.value("session_id", -1);
+
+        // add here other optional fields as needed
+
+        // set the flag to send the command in the process method
         _send_command = true;
         _command_to_send = action;
-        _id_to_send = input.value("id", -1);
-        std::cout << "Controller: Sending command " << action << " with id " << _id_to_send<< std::endl;
-        return return_type::success;
-      }
 
-      if (action == "stop") {
-        if (_acquiring == false) {
+        std::cout << "Controller: Sending command " << action << " with id " << _id_to_send << std::endl;
+      } else if (action == "stop") {
+        if (_recording == false) {
           _error = "Controller: stop requested while not acquiring";
           return return_type::warning;
         }
+
+        // set the flag to send the command in the process method
         _send_command = true;
         _command_to_send = action;
-        std::cout << "Controller: Sending command " << action << std::endl;
-        return return_type::success;
-      }
 
-      if (action == "set_offset") {
-        _send_command = true;
-        _command_to_send = action;
         std::cout << "Controller: Sending command " << action << std::endl;
-        return return_type::success;
-      }
-
-      if (action == "pupil_neon_connect" || action == "pupil_neon_disconnect") {
-        _send_command = true;
-        _command_to_send = action;
-        std::cout << "Controller: Sending command " << action << std::endl;
-        return return_type::success;
-      }
-
-      if (action == "condition") {
+      } else if (action == "condition") {
         if (input.contains("label")) {
+          
+          // send with additional field "label" if it is provided in the input json, if not, use "NA" as default value
+          _label_to_send = input.value("label", "NA");
+
           _send_command = true;
           _command_to_send = action;
-          _label_to_send = input.value("label", "NA");
-        std::cout << "Controller: Sending command " << action << " with label " << _label_to_send << std::endl;
-          return return_type::success;
-        }
-      }
 
-      _error = "Controller: unknown command '" + action + "'";
-      return return_type::warning;
+          std::cout << "Controller: Sending command " << action << " with label " << _label_to_send << std::endl;
+        }
+      } else if (action == "set_offset" || action == "pupil_neon_connect" || action == "pupil_neon_disconnect") {
+        // add here other commands that doesn't require additional fields or check for them as needed
+        _send_command = true;
+        _command_to_send = action;
+        std::cout << "Controller: Sending command " << action << std::endl;
+      } else {
+        return return_type::retry;
+      }
+    } else {
+      return return_type::retry;
     }
 
     return return_type::success;
@@ -126,33 +113,54 @@ public:
   return_type process(json &out) override {
     out.clear();
 
+    // Send periodic health_status if no command to send and 500ms have passed
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_health_status_time).count();
+    
     // load the data as necessary and set the fields of the json out variable
-    if (_send_command) {
-      out["command"] = _command_to_send;
+    if (_send_command || elapsed >= _health_status_period) {
 
-      if (_command_to_send == "start") {
-        out["id"] = _id_to_send; // include id only for start command
-        if (_subject_id_to_send != -1) {
-          out["subject_id"] = _subject_id_to_send;
-        }
-        if (_session_id_to_send != -1) {
-          out["session_id"] = _session_id_to_send;
-        }
-        _acquiring = true;
-      } else if (_command_to_send == "stop") {
-        _acquiring = false;
-      }
-      else if (_command_to_send == "set_offset") {
-        //_error = "set_offset command not implemented in ControllerPlugin";
-      }
-      else if (_command_to_send == "condition") {
-        out["label"] = _label_to_send;
-      }
-      // do nothing special for set_offset
+      if (elapsed >= _health_status_period) {
+        out["health_status"] = _recording ? "recording" : "idle";
+        _last_health_status_time = now;
+      } 
 
+      if (_send_command){
+        out["command"] = _command_to_send;
+
+        if (_command_to_send == "start") {
+
+          out["id"] = _id_to_send; // include id only for start command
+          if (_subject_id_to_send != -1) {
+            out["subject_id"] = _subject_id_to_send;
+          }
+          if (_session_id_to_send != -1) {
+            out["session_id"] = _session_id_to_send;
+          }
+          _recording = true;
+          
+          // update health status immediately when starting acquisition, so that the agent can react to it without waiting for the next periodic update
+          out["health_status"] = "recording";
+
+        } else if (_command_to_send == "stop") {
+
+          _recording = false;
+          out["health_status"] = "idle";
+
+        } else if (_command_to_send == "condition") {
+
+          out["label"] = _label_to_send;
+        
+        }
+        // do nothing special for other commands for now, just send the command
+      }
+
+      // always reset the command to send after sending it, so that we don't send it again in the next iteration
       _send_command = false; // reset the flag
-    }
-    else {
+      _command_to_send = ""; // reset the command
+
+    } else {
+      // if there is no command to send and not enough time has passed, don't send anything
       return return_type::retry;
     }
 
@@ -167,13 +175,11 @@ public:
     // (e.g. agent_id, etc.)
     Filter::set_params(params);
 
-    // provide sensible defaults for the parameters by setting e.g.
-    _params["some_field"] = "default_value";
-    // more here...
-
     // then merge the defaults with the actually provided parameters
     // params needs to be cast to json
     _params.merge_patch(params);
+
+    _health_status_period = _params.value("health_status_period", 500); // default to 500 ms
       
   }
 
@@ -189,14 +195,19 @@ public:
 
 private:
   // Define the fields that are used to store internal resources
-  bool _acquiring = false;
+  bool _recording = false;
   bool _send_command = false;
+
   string _command_to_send = "";
+
+  int _health_status_period = 500; // in milliseconds, default to 500 ms
+  std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
+
   int _id_to_send = -1;
   int _subject_id_to_send = -1;
   int _session_id_to_send = -1;
   string _label_to_send = "NA";
-  json _last_agent_event;
+  
 };
 
 

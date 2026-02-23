@@ -10,7 +10,7 @@
 # Hostname: unknown
 # Current working directory: C:\mirrorworld\instrumented_crutches
 # Creation date: 2026-01-11T18:28:16.919+0100
-# NOTICE: MADS Version 1.4.0
+# NOTICE: MADS Version 2.0.0
 */
 
 // To run this plugin remember to use the command with the --dont-block option enabled to avoid blocking while waiting for new data in sub_topic
@@ -22,12 +22,18 @@
 #include <pugg/Kernel.h>
 
 // other includes as needed here
-#include <memory>          // For std::unique_ptr
-#include <chrono>          // For time handling
+#include <memory> // For std::unique_ptr
 
-// Include HX711 for Raspberry Pi
-#include <hx711/common.h>  // Library for HX711
-using namespace HX711;
+
+#ifdef RASPBERRYPI_PLATFORM
+  // Include HX711 for Raspberry Pi
+  #include <hx711/common.h>  // Library for HX711
+  using namespace HX711;
+  #pragma message("This computer has the HX711 library installed.")
+#else
+  // If we are not on a Raspberry Pi, we don't have the actual sensor, so we can just emulate it by generating random values in the process method, which can be useful for development and testing on non-Raspberry Pi machines
+  #pragma message("This computer does not have the HX711 library available, sensor readings will be emulated with random values.")
+#endif 
 
 // Define the name of the plugin
 #ifndef PLUGIN_NAME
@@ -37,7 +43,6 @@ using namespace HX711;
 // Load the namespaces
 using namespace std;
 using json = nlohmann::json;
-using namespace std::chrono;
 
 // Plugin class. This shall be the only part that needs to be modified,
 // implementing the actual functionality
@@ -45,8 +50,10 @@ class Tip_loadcellPlugin : public Filter<json, json> {
 
 public:
 
+#ifdef RASPBERRYPI_PLATFORM
   // Constructor
   Tip_loadcellPlugin() : _hx(nullptr) {}
+#endif
 
   // Typically, no need to change this
   string kind() override { return PLUGIN_NAME; }
@@ -54,40 +61,48 @@ public:
   // Implement the actual functionality here
   return_type load_data(json const &input, string topic = "") override {
     
-    // if topic is "command", process commands here
-    if (topic == "command") {
-      if (!input.contains("command")) {
-        return return_type::retry;
-      }
+    // if topic contains the "command" field, process commands here
+    if (input.contains("command")) {
 
-      string action = input["command"];
+      string action = input.value("command", ""); // Get the command, default to empty string if not found
       if (action == "start") {
-        if (_acquiring) {
-          _error = "Tip Loadcell: start requested while already acquiring";
+        // Check if we are already recording, if yes, return a warning
+        if (_recording) {
+          _error = "Tip Loadcell: start requested while already recording";
           std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
           return return_type::warning;
         }
-        _acquiring = true;
+
+        _recording = true;
         std::cout << std::endl << "Tip Loadcell: Starting acquisition" << std::endl;
+
       } else if (action == "stop") {
-        if (_acquiring == false) {
-          _error = "Tip Loadcell: stop requested while not acquiring";
-        std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
+        // check if we are not recording, if yes, return a warning
+        if (_recording == false) {
+          _error = "Tip Loadcell: stop requested while not recording";
+          std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
           return return_type::warning;
         }
-        _acquiring = false;
+        
+        _recording = false;
         std::cout << std::endl << "Tip Loadcell: Stopping acquisition" << std::endl;
+
       } else if (action == "set_offset") {
-        if (_acquiring) {
-          _error = "Tip Loadcell: set_offset not allowed while acquiring, request ignored";
-        std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
+        
+        // Setting offset is only allowed when not recording, if we are recording return an error
+        // This is to avoid changing the offset while we are acquiring data, which could lead to inconsistent data and make it difficult to understand the actual forces being applied on the crutches.
+        if (_recording) {
+          _error = "Tip Loadcell: set_offset not allowed while recording, request ignored";
+          std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
           return return_type::error;
         }
+
         _setting_offset = true;
         std::cout << std::endl << "Tip Loadcell: Setting offset" << std::endl;
-      } else {
-        return return_type::retry;
-      }
+
+      } 
+
+      // Just continue if the command is not recognized, we might want to handle it in the process method or just ignore it
     }
 
     return return_type::success;
@@ -101,48 +116,86 @@ public:
     // Not valid states or transitions are handled in load_data, here we just process data
     // Here we should have only valid states and errors related to reading the sensor
 
+    // Send periodic health_status if 500ms have passed
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_health_status_time).count();
+  
     // load the data as necessary and set the fields of the json out variable
-    if (_acquiring) {
-
-      try {
-        if (_hx && _enabled) {
-          auto now = std::chrono::system_clock::now();
-          float loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
-
-          out["time"][_side] = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-          out["force"][_side] = loadCellValue - _offset;
-
-        }
-      } catch (const std::exception &e) {
-        _error = "Tip Loadcell: Error reading from HX711: " + string(e.what());
-        return return_type::warning;
-      }
+    if (_recording || _setting_offset || elapsed >= _health_status_period) {
       
-    } else if (_setting_offset && _acquiring == false) {
-      try {
-        // Real hardware offset on Raspberry Pi
-        float loadCellValue = _hx->weight(40).getValue(Mass::Unit::N);
-        _offset = loadCellValue;
-        _setting_offset = false;
+      if (elapsed >= _health_status_period) {
+        out["health_status"] = _recording ? "recording" : "idle";
+        _last_health_status_time = now;
+      } 
 
-        // test read after setting offset
-        loadCellValue = _hx->weight(20).getValue(Mass::Unit::N);
-        auto offset_test = loadCellValue - _offset;
+      if (_recording){
+        #ifdef RASPBERRYPI_PLATFORM
         
-        // Store the offset and the test read in the output json for user feedback
-        // We only fill the field for the current side
-        out["offset"][_side] = _offset;
-        out["offset_test"][_side] = offset_test;
+          try {
+            if (_hx) {
 
-      } catch (const std::exception &e) {
-        _error = "Tip Loadcell: Error reading from HX711 for offset: " + string(e.what());
-        return return_type::warning;
+              // read the load cell value, subtract the offset and store it in the output json object
+              float loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
+              out["force"] = loadCellValue - _offset;
+
+            }
+          } catch (const std::exception &e) {
+            _error = "Tip Loadcell: Error reading from HX711: " + string(e.what());
+            return return_type::error;
+          }
+
+        #else
+
+          // If we are not on a Raspberry Pi, we emulate the load cell readings by generating random values, which can be useful for development and testing on non-Raspberry Pi machines
+          out["force"] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 100.0; // Random value between 0 and 100 N
+
+        #endif
+        
+      } else if (_setting_offset) {
+        #ifdef RASPBERRYPI_PLATFORM
+        
+          try {
+            // Real hardware offset on Raspberry Pi
+            float loadCellValue = _hx->weight(40).getValue(Mass::Unit::N);
+            _offset = loadCellValue;
+            _setting_offset = false;
+
+            // test read after setting offset
+            loadCellValue = _hx->weight(20).getValue(Mass::Unit::N);
+            auto offset_test = loadCellValue - _offset;
+            
+            // Store the offset and the test read in the output json for user feedback
+            // We only fill the field for the current side
+            out["offset"] = _offset;
+            out["offset_test"] = offset_test;
+
+          } catch (const std::exception &e) {
+            _error = "Tip Loadcell: Error reading from HX711 for offset: " + string(e.what());
+            return return_type::warning;
+          }
+
+        #else
+          // If we are not on a Raspberry Pi, we emulate the offset setting by generating a random offset value, which can be useful for development and testing on non-Raspberry Pi machines
+          _offset = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 10.0; // Random offset value between 0 and 10 N
+          _setting_offset = false;
+
+          float offset_test = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 5.0; // Random offset test value between 0 and 5 N
+
+          // Store the offset and offset_test in the output json for user feedback
+          out["offset"] = _offset;
+          out["offset_test"] = offset_test;
+
+        #endif
       }
-      
     } else {
+      // if there is no command to send and not enough time has passed, don't send anything
       return return_type::retry;
     }
+    
 
+    // If there is a message to send, we must send the crutch side
+    out["side"] = _side;
+    
     // This sets the agent_id field in the output json object, only when it is
     // not empty
     if (!_agent_id.empty()) out["agent_id"] = _agent_id;
@@ -161,6 +214,8 @@ public:
     // params needs to be cast to json
     _params.merge_patch(params);
 
+    _health_status_period = _params.value("health_status_period", 500); // default to 500 ms
+
     if (_params.contains("side") && (_params["side"] == "left" || _params["side"] == "right")) {
       _side = _params["side"].get<string>();
       std::cout << "Tip Loadcell: Side set to " << _side << std::endl;
@@ -171,7 +226,6 @@ public:
     }
 
     // Read configuration parameters for the single HX711 sensor
-    _enabled = _params.value("enabled", true);  // Default to true if not specified
     int dataPin = _params.value("datapin", 6); // default data pin 6 based on typical Raspberry Pi wiring for HX711
     int clockPin = _params.value("clockpin", 26); // default clock pin 26 based on typical Raspberry Pi wiring for HX711
 
@@ -184,12 +238,21 @@ public:
       throw std::runtime_error(_error);
     }
 
-    // Initialize the HX711 sensor
-    if (_enabled && dataPin != -1 && clockPin != -1) {
-      _hx = std::make_unique<AdvancedHX711>(dataPin, clockPin, scaling, 0.0, Rate::HZ_80);
-      std::cout << "Tip Loadcell: HX711 initialized with dataPin=" << dataPin 
-                << ", clockPin=" << clockPin << ", scaling=" << scaling << std::endl;
-    }
+    #ifdef RASPBERRYPI_PLATFORM
+
+      // Initialize the HX711 sensor
+      if (dataPin != -1 && clockPin != -1) {
+        _hx = std::make_unique<AdvancedHX711>(dataPin, clockPin, scaling, 0.0, Rate::HZ_80);
+        std::cout << "Tip Loadcell: HX711 initialized with dataPin=" << dataPin 
+                  << ", clockPin=" << clockPin << ", scaling=" << scaling << std::endl;
+      }
+
+    #else
+
+      // If we are not on a Raspberry Pi, we emulate the load cell readings, so no need to initialize the HX711 sensor
+      std::cout << "Tip Loadcell: Running in emulation mode, no HX711 initialization needed" << std::endl;
+
+    #endif
 
     _setting_offset = true; // Set offset at the beginning
   }
@@ -205,13 +268,20 @@ public:
   };
 
 private:
-  // Define the fields that are used to store internal resources
-  unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor
+
+  #ifdef RASPBERRYPI_PLATFORM
+    // Define the fields that are used to store internal resources
+    unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor
+  #else
+    // If we are not on a Raspberry Pi, we don't have the actual sensor
+  #endif 
 
   // Control flags
-  bool _enabled = false;
-  bool _acquiring = false;
+  bool _recording = false;
   bool _setting_offset = false;
+
+  int _health_status_period = 500; // in milliseconds, default to 500 ms
+  std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
 
   // Internal variables
   string _side = "unknown";
@@ -243,32 +313,7 @@ INSTALL_FILTER_DRIVER(Tip_loadcellPlugin, json, json);
 
 int main(int argc, char const *argv[])
 {
-  Tip_loadcellPlugin plugin;
-  json params;
-  json input, output;
-
-  // Set example values to params
-  params["test"] = "value";
-
-  // Set the parameters
-  plugin.set_params(params);
-
-  // Set input data
-  input["data"] = {
-    {"AX", 1},
-    {"AY", 2},
-    {"AZ", 3}
-  };
-
-  // Set input data
-  plugin.load_data(input);
-  cout << "Input: " << input.dump(2) << endl;
-
-  // Process data
-  plugin.process(output);
-  cout << "Output: " << output.dump(2) << endl;
-
-
+  //
   return 0;
 }
 

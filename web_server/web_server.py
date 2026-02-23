@@ -507,6 +507,27 @@ async def set_offset():
             "status": "error",
             "message": str(e)
         }
+    
+@app.post("/health_status")
+async def health_status():
+    """Send health_status command via mads."""
+    try:
+        success, mads_output = await send_mads_command_async("health_status")
+        if not success:
+            return {
+                "status": "error",
+                "message": f"mads command failed: {mads_output}"
+            }
+        
+        return {
+            "status": "success",
+            "message": "Health status sent"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 @app.post("/save_comment")

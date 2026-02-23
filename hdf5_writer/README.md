@@ -1,6 +1,6 @@
 # hdf5 plugin for MADS
 
-This is a Sink plugin for [MADS](https://github.com/MADS-NET/MADS). 
+This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS). 
 
 This plugin saves the incoming data into a [HDF5](https://www.hdfgroup.org/solutions/hdf5/) file. It is designed to work with the MADS framework, allowing users to store data in a structured format that is efficient for both storage and retrieval.
 
@@ -31,8 +31,9 @@ then the dataset `key1` will contain a column vector of strings, the dataset `ke
 
 The keypath separator is `.` by default, but it can be changed in the INI file (note that `/` is not a valid separator).
 
+An health status message is published if requested, when receiving a "health_status" command in the "command" input. 
 
-*Required MADS version: 1.3.1.*
+*Required MADS version: 2.0.0.*
 
 
 ## Supported platforms
@@ -71,6 +72,7 @@ The plugin supports the following settings in the INI file:
 # mads-sink hdf5_writer.plugin 
 [hdf5_writer]
 sub_topic = ["command", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"]
+pub_topic = "hdf5_writer"
 folder_path = "../web_server/data"
 keypath_sep = "."
 keypaths = {"tip_loadcell" = ["force.right", "force.left"],

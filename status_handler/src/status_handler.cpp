@@ -46,10 +46,14 @@ public:
 
   // Implement the actual functionality here
   return_type load_data(json const &input, string topic = "") override {
-    _last_input = input;
-    _last_topic = topic;
+    
+    // initialize variables to build the message and determine the level
+    string level = "";
+    string message = "";
+    string side = "";
+    bool has_status = false;
 
-    // Normalize source based on topic or agent_id/name
+    // Get source from agent_id or name field, or use topic as source
     string source = topic.empty() ? "unknown" : topic;
     if (input.contains("name")) {
       try {
@@ -65,117 +69,68 @@ public:
       }
     }
 
-    auto to_lower = [](string s) {
-      std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
-      return s;
-    };
+    // Get side from the side field if present, or from settings if present (from modified_settings first, then from settings)
+    // If the side is not specified, it will be set to void and the message will be considered as not related to a specific side
+    if (input.contains("side") && input["side"].is_string()) {
 
-    auto get_string = [&](const char *key) -> string {
-      if (!input.contains(key)) return "";
-      try { return input[key].get<string>(); } catch (...) { return ""; }
-    };
+      side = input["side"].get<string>();
 
-    string level = "";
-    string message = "";
-    string side = "";
-    bool has_error = false;
+    } else if (input.contains("modified_settings") && input["modified_settings"].is_object()) {
 
-    // Handle error format: info.error = ["where", "message"]
-    if (input.contains("info") && input["info"].is_object()) {
-      try {
-        auto info = input["info"];
-        
-        // Helper to extract message from array field
-        auto extract_from_array = [&](const char* field, const char* lvl) {
-          if (info.contains(field) && info[field].is_array()) {
-            has_error = true;
-            level = lvl;
-            auto& arr = info[field];
-            if (message.empty() && arr.size() >= 2 && arr[1].is_string()) {
-              message = arr[1].get<string>();
-            }
-            if (message.empty() && arr.size() >= 1 && arr[0].is_string()) {
-              message = arr[0].get<string>();
-            }
-            return true;
-          }
-          return false;
-        };
-        
-        extract_from_array("error", "error") || 
-        extract_from_array("warning", "warning") || 
-        extract_from_array("fatal", "fatal");
-        
-      } catch (...) {}
-    }
-
-    // Extract side from settings.side if present
-    if (input.contains("modified_settings") && input["modified_settings"].is_object()) {
       try {
         auto settings = input["modified_settings"];
         if (settings.contains("side") && settings["side"].is_string()) {
           side = settings["side"].get<string>();
         }
       } catch (...) {}
+
     } else if (input.contains("settings") && input["settings"].is_object()) {
+
       try {
         auto settings = input["settings"];
         if (settings.contains("side") && settings["side"].is_string()) {
           side = settings["side"].get<string>();
         }
       } catch (...) {}
+
     }
 
-    // Handle the shutdown messages
-    bool has_shutdown = false;
-    if (input.contains("event") && input["event"].is_string() && input["event"].get<string>() == "shutdown") {
-      has_shutdown = true;
-      level = "critical";
-      
-      // Build shutdown message
-      std::ostringstream oss;
-      oss << "shutdown";
-      
-      message = oss.str();
-      
-      if (_debug) {
-        std::cout << "StatusHandler: the agent " << source << " is shutting down." << std::endl;
-      }
-    }
+    // Handle the shutdown/startup messages
+    if (input.contains("event")){
+      if (input["event"].is_string()){
+        string event = input["event"].get<string>();
+        if (event == "shutdown" || event == "startup") {
+          has_status = true;
 
-    // Handle the startup messages
-    bool has_startup = false;
-    if (input.contains("event") && input["event"].is_string() && input["event"].get<string>() == "startup") {
-      has_startup = true;
-      level = "info";
-      
-      // Build startup message
-      std::ostringstream oss;
-      oss << "startup";
-      
-      message = oss.str();
-      
-      if (_debug) {
-        std::cout << "StatusHandler: the agent " << source << " is starting up." << std::endl;
+          // if you have more status handle here the according levels
+          level = "info"; // default level is info, but it can be changed based on the event
+          if (event == "shutdown"){
+            level = "critical";
+          } else if (event == "startup") {
+            level = "info";
+          }
+          
+          // Build shutdown message
+          std::ostringstream oss;
+          oss << event;
+          
+          message = oss.str();
+          
+          if (_debug) {
+            std::cout << "StatusHandler: the agent " << source << " is " << event << "." << std::endl;
+          }
+        }
       }
     }
 
     // Handle offset messages from loadcell topic
-    bool has_offset = false;
     if (input.contains("offset") && input.contains("offset_test")) {
-      has_offset = true;
-      level = "warning";
-      side = "unknown";
-      
-      if (input["offset"].contains("left") && input["offset_test"].contains("left")) {
-        side = "left";
-      } else if (input["offset"].contains("right") && input["offset_test"].contains("right")) {
-        side = "right";
-      }
+      has_status = true;
+      level = "warning"; // we want to consider the offset setting as a warning, because it is not an error but it is an important event that we want to be aware of
 
       // Build offset message
       std::ostringstream oss;
-      oss << "offset = " << input["offset"][side] << " N, test = " << input["offset_test"][side] << " N";
+      oss << "offset = " << input["offset"] << " N, test = " << input["offset_test"] << " N";
       
       message = oss.str();
       if (_debug) {
@@ -183,10 +138,10 @@ public:
       }
     }
 
+    // TODO: implement the same logic in pupil_neon.py agent and then correct this part
     // Handle pupil neon info messages 
-    bool has_neon_info = false;
     if (input.contains("pupil_neon_connected") || input.contains("pupil_neon_connection_error")) {
-      has_neon_info = true;
+      has_status = true;
 
       // Build neon info message
       std::ostringstream oss;
@@ -206,15 +161,35 @@ public:
       }
     }
 
-    // If level indicates an issue, build message
-    bool is_relevant = has_error || has_offset || has_shutdown || has_startup || has_neon_info || (level == "info" || level == "warning" || level == "error" || level == "fatal" || level == "critical");
+    // Handle health info messages 
+    if (input.contains("health_status")) {
 
-    if (is_relevant) {
-      if (_debug) {
-        std::cout << "StatusHandler: issue detected level='" << level << "' source='" << source << "'";
-        if (!side.empty()) std::cout << " side='" << side << "'";
-        std::cout << " message='" << message << "'" << std::endl;
+      // add side only when needed to distinguish the topic
+      string underscore_side = side.empty() ? "" : "_" + side;
+
+      if (input["health_status"].is_string()) {
+        message = input["health_status"].get<string>();
+        has_status = true;
+        level = "info";
       }
+
+      if (_debug) {
+        std::cout << "StatusHandler: health status - topic='" << topic << "' message='" << message << "'" << std::endl;
+      }
+    }
+
+    auto get_string = [&](const char *key) -> string {
+      if (!input.contains(key)) return "";
+      try { return input[key].get<string>(); } catch (...) { return ""; }
+    };
+
+    // If you want to mask certain messages based on the level, remove here the level to not handle
+    bool is_relevant =  has_status && (level == "info" || level == "warning" || level == "error" || level == "fatal" || level == "critical");
+    
+    // proceed only if the message is relevant based on the level, otherwise ignore it
+    if (is_relevant) {
+
+      // fallback if the message has not been handled in specific cases above
       if (message.empty()) {
         message = get_string("message");
       }
@@ -224,33 +199,21 @@ public:
       if (message.empty()) {
         message = "Unhandled error event";
       }
+      
+      if (_debug) {
+        std::cout << "StatusHandler: issue detected level='" << level << "' source='" << source << "'";
+        if (!side.empty()) std::cout << " side='" << side << "'";
+        std::cout << " message='" << message << "'" << std::endl;
+      }
 
+      // Build the output json object with the relevant information about the status, and push it to the pending queue
+      // note: timestamp and timecode are added by the agent, so no need to add them here (they are the timestamps of the device running this plugin)
       json out_msg;
       out_msg["source"] = source;
       out_msg["topic"] = topic;
       out_msg["level"] = level;
       out_msg["message"] = message;
-      // Prefer source timestamp if present
-      if (input.contains("timestamp") && input["timestamp"].is_object() && input["timestamp"].contains("$date")) {
-        try {
-          if (input["timestamp"]["$date"].is_string()) {
-            out_msg["timestamp"] = input["timestamp"]["$date"].get<string>();
-          } else {
-            out_msg["timestamp"] = now_iso8601();
-          }
-        } catch (...) {
-          out_msg["timestamp"] = now_iso8601();
-        }
-      } else {
-        out_msg["timestamp"] = now_iso8601();
-      }
       if (!side.empty()) out_msg["side"] = side;
-
-      // Include details if present (lightweight)
-      if (input.contains("code")) out_msg["code"] = input["code"];
-      if (input.contains("command")) out_msg["command"] = input["command"];
-      if (input.contains("id")) out_msg["id"] = input["id"];
-      if (input.contains("timecode")) out_msg["timecode"] = input["timecode"];
 
       _pending.push_back(out_msg);
       if (_pending.size() > _max_pending) {
@@ -268,7 +231,8 @@ public:
 
     if (_pending.empty()) {
       if (_debug) {
-        std::cout << "StatusHandler: process retry (no pending messages)" << std::endl;
+        // just print a dot to indicate that the plugin is waiting for messages
+        std::cout << ".";
       }
       return return_type::retry;
     }
@@ -277,7 +241,7 @@ public:
     _pending.pop_front();
 
     if (_debug) {
-      std::cout << "StatusHandler: emitting status=" << out.dump(4) << std::endl;
+      std::cout << std::endl << "StatusHandler: emitting status=" << out.dump(4) << std::endl;
     }
 
     // This sets the agent_id field in the output json object, only when it is
@@ -291,17 +255,15 @@ public:
     // (e.g. agent_id, etc.)
     Filter::set_params(params);
 
-    // provide sensible defaults for the parameters by setting e.g.
-    _params["max_pending"] = 100;
-    _params["debug"] = false;
-    // more here...
-
     // then merge the defaults with the actually provided parameters
     // params needs to be cast to json
     _params.merge_patch(params);
+
+    // Read the parameters for the plugin, set as defaults if not specified
     _max_pending = _params.value("max_pending", 100);
     _debug = _params.value("debug", false);
-      
+
+
   }
 
   // Implement this method if you want to provide additional information
@@ -316,26 +278,9 @@ public:
 
 private:
   // Define the fields that are used to store internal resources
-  json _last_input;
-  string _last_topic;
   std::deque<json> _pending;
   size_t _max_pending = 100;
   bool _debug = false;
-
-  string now_iso8601() const {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto t = system_clock::to_time_t(now);
-    std::tm tm{};
-#ifdef _WIN32
-    localtime_s(&tm, &t);
-#else
-    localtime_r(&t, &tm);
-#endif
-    std::ostringstream ss;
-    ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
-    return ss.str();
-  }
 };
 
 
