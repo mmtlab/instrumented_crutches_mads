@@ -383,6 +383,39 @@ h2 {
     letter-spacing: 0.4px;
 }
 
+.node-status-value {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+    margin-left: 8px;
+    padding: 2px 6px;
+    background: #f8fafc;
+    border-radius: 4px;
+    border-left: 2px solid var(--primary);
+}
+
+.node-status-value-ready {
+    color: #10b981;
+    border-left-color: #10b981;
+    background: #ecfdf5;
+    font-style: normal;
+}
+
+.node-status-value-attn {
+    color: #f59e0b;
+    border-left-color: #f59e0b;
+    background: #fffbeb;
+    font-style: normal;
+}
+
+.node-status-value-recording {
+    color: #60a5fa;
+    border-left-color: #60a5fa;
+    background: #eff6ff;
+    font-style: normal;
+}
+
 .node-status-unknown {
     background: #e2e8f0;
     border-color: #cbd5f5;

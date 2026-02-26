@@ -56,12 +56,17 @@
         tipRight: document.getElementById('tip-right'),
         tipLeftState: document.getElementById('tip-left-state'),
         tipRightState: document.getElementById('tip-right-state'),
-        statusController: document.getElementById('status-controller'),
-        statusControllerState: document.getElementById('status-controller-state'),
+        tipLeftValue: document.getElementById('tip-left-value'),
+        tipRightValue: document.getElementById('tip-right-value'),
+        statusCoordinator: document.getElementById('status-coordinator'),
+        statusCoordinatorState: document.getElementById('status-coordinator-state'),
+        statusCoordinatorValue: document.getElementById('status-coordinator-value'),
         statusEyetracker: document.getElementById('status-eyetracker'),
         statusEyetrackerState: document.getElementById('status-eyetracker-state'),
+        statusEyetrackerValue: document.getElementById('status-eyetracker-value'),
         statusHdf5: document.getElementById('status-hdf5'),
         statusHdf5State: document.getElementById('status-hdf5-state'),
+        statusHdf5Value: document.getElementById('status-hdf5-value'),
         toggleNodeStatusBtn: document.getElementById('toggle-node-status-btn'),
         nodeStatusContent: document.getElementById('node-status-content'),
         conditionBtn: document.getElementById('condition-btn'),
@@ -203,16 +208,74 @@
     }
 
     const tipStatusClasses = ['node-status-unknown', 'node-status-live', 'node-status-dead'];
+    const statusValueClasses = ['node-status-value-ready', 'node-status-value-attn', 'node-status-value-recording'];
 
-    function setServiceStatus(serviceName, status) {
-        let indicator, stateLabel;
+    function deriveIndicatorStatus(message, statusValue) {
+        const msg = (message || '').toString().trim().toLowerCase();
+        const status = (statusValue || '').toString().trim().toLowerCase();
+
+        if (msg.includes('startup')) return 'live';
+        if (msg.includes('shutdown')) return 'dead';
+        if (status === 'idle') return 'live';
+        if (status === 'recording') return 'live';
+        if (status === 'shutdown') return 'dead';
+
+        return 'unknown';
+    }
+
+    function applyStatusValue(valueLabel, statusValue, options = {}) {
+        if (!valueLabel) return;
+        valueLabel.classList.remove(...statusValueClasses);
+
+        if (!statusValue) {
+            valueLabel.textContent = '';
+            return;
+        }
+
+        const normalized = statusValue.toString().trim().toLowerCase();
+        if (normalized === 'idle') {
+            if (options.isPupilNeon) {
+                valueLabel.textContent = 'ready to connect';
+                valueLabel.classList.add('node-status-value-attn');
+            } else {
+                valueLabel.textContent = 'ready';
+                valueLabel.classList.add('node-status-value-ready');
+            }
+            return;
+        }
+
+        if (normalized === 'connected') {
+            valueLabel.textContent = 'CONNECTED';
+            valueLabel.classList.add('node-status-value-ready');
+            return;
+        }
+
+        if (normalized === 'disconnected') {
+            valueLabel.textContent = 'DISCONNECTED';
+            valueLabel.classList.add('node-status-value-attn');
+            return;
+        }
+
+        if (normalized === 'recording') {
+            valueLabel.textContent = 'RECORDING';
+            valueLabel.classList.add('node-status-value-recording');
+            return;
+        }
+
+        valueLabel.textContent = statusValue;
+    }
+
+    function setServiceStatus(serviceName, status, statusValue) {
+        let indicator, stateLabel, valueLabel;
         
-        if (serviceName === 'controller') {
-            indicator = elements.statusController;
-            stateLabel = elements.statusControllerState;
+        if (serviceName === 'coordinator') {
+            indicator = elements.statusCoordinator;
+            stateLabel = elements.statusCoordinatorState;
+            valueLabel = elements.statusCoordinatorValue;
         } else if (serviceName === 'hdf5_writer') {
             indicator = elements.statusHdf5;
             stateLabel = elements.statusHdf5State;
+            valueLabel = elements.statusHdf5Value;
         } else {
             return;
         }
@@ -230,12 +293,16 @@
             indicator.classList.add('node-status-unknown');
             stateLabel.textContent = 'Unknown';
         }
+        
+        // Update status value if provided
+        applyStatusValue(valueLabel, statusValue);
     }
 
-    function setTipStatus(side, status) {
+    function setTipStatus(side, status, statusValue) {
         const isLeft = side === 'left';
         const indicator = isLeft ? elements.tipLeft : elements.tipRight;
         const stateLabel = isLeft ? elements.tipLeftState : elements.tipRightState;
+        const valueLabel = isLeft ? elements.tipLeftValue : elements.tipRightValue;
 
         if (!indicator || !stateLabel) return;
 
@@ -250,13 +317,17 @@
             indicator.classList.add('node-status-unknown');
             stateLabel.textContent = 'Unknown';
         }
+        
+        // Update status value if provided
+        applyStatusValue(valueLabel, statusValue);
     }
 
     const eyetrackerStatusClasses = ['node-status-connected', 'node-status-disconnected'];
 
-    function setEyetrackerStatus(status) {
+    function setEyetrackerStatus(status, statusValue, options = {}) {
         const indicator = elements.statusEyetracker;
         const stateLabel = elements.statusEyetrackerState;
+        const valueLabel = elements.statusEyetrackerValue;
 
         if (!indicator || !stateLabel) {
             console.warn('⚠️ Eye-tracker status elements not found');
@@ -291,6 +362,9 @@
         
         // Sync state
         state.eyetrackerConnected = isConnected;
+        
+        // Update status value if provided
+        applyStatusValue(valueLabel, statusValue, options);
     }
 
     function getCrutchSideFromMessage(msg) {
@@ -308,18 +382,21 @@
         const text = (msg.message || '').toString().trim().toLowerCase();
         const source = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString();
         const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
+        const statusValue = (msg.status || '').toString();  // New status field from message
 
         // Handle eye-tracker sensors (pupil_neon, eye_tracker)
         if (sourceNorm.includes('eye_tracker') || sourceNorm.includes('pupil_neon')) {
             console.log(`👁️ Eye-tracker message detected: source="${source}", text="${text}", level="${level}"`);
             // Check disconnected FIRST (more specific) before connected
+            const isPupilNeon = sourceNorm.includes('pupil_neon');
+
             if (text === 'disconnected' || text.includes('disconnected')) {
                 console.log(`❌ Calling setEyetrackerStatus('disconnected')`);
-                setEyetrackerStatus('disconnected');
+                setEyetrackerStatus('disconnected', statusValue, { isPupilNeon });
                 return;
             } else if (text === 'connected' || text.includes('connected')) {
                 console.log(`✅ Calling setEyetrackerStatus('connected')`);
-                setEyetrackerStatus('connected');
+                setEyetrackerStatus('connected', statusValue, { isPupilNeon });
                 return;
             } else {
                 console.warn(`⚠️ Eye-tracker message not recognized: "${text}"`);
@@ -337,24 +414,34 @@
             removeShutdownMessagesForNode(source, side);
             // Update tip status only if we have a side (loadcell)
             if (side) {
-                setTipStatus(side, 'live');
+                setTipStatus(side, 'live', statusValue);
             }
             // Update master services status
-            if (sourceNorm === 'controller') {
-                setServiceStatus('controller', 'live');
+            if (sourceNorm === 'coordinator') {
+                setServiceStatus('coordinator', 'live', statusValue);
             } else if (sourceNorm === 'hdf5_writer') {
-                setServiceStatus('hdf5_writer', 'live');
+                setServiceStatus('hdf5_writer', 'live', statusValue);
             }
         } else if (isShutdown) {
             // Update tip status only if we have a side (loadcell)
             if (side) {
-                setTipStatus(side, 'dead');
+                setTipStatus(side, 'dead', statusValue);
             }
             // Update master services status
-            if (sourceNorm === 'controller') {
-                setServiceStatus('controller', 'dead');
+            if (sourceNorm === 'coordinator') {
+                setServiceStatus('coordinator', 'dead', statusValue);
             } else if (sourceNorm === 'hdf5_writer') {
-                setServiceStatus('hdf5_writer', 'dead');
+                setServiceStatus('hdf5_writer', 'dead', statusValue);
+            }
+        } else if (statusValue) {
+            const derivedStatus = deriveIndicatorStatus(text, statusValue);
+            if (side) {
+                setTipStatus(side, derivedStatus, statusValue);
+            }
+            if (sourceNorm === 'coordinator') {
+                setServiceStatus('coordinator', derivedStatus, statusValue);
+            } else if (sourceNorm === 'hdf5_writer') {
+                setServiceStatus('hdf5_writer', derivedStatus, statusValue);
             }
         }
     }
@@ -708,24 +795,29 @@
             rightTitle.textContent = `Right Crutch (${isMasterLeft ? 'Slave' : 'Master'})`;
         }
         
-        // Move Controller, Logger, Eye-tracker and Separator items to master card
+        // Move Coordinator, Logger, Eye-tracker and Separator items to master card
         // Find the items
-        const controllerItem = document.querySelector('[id="status-controller"]').closest('.node-status-item');
-        const loggerItem = document.querySelector('[id="status-hdf5"]').closest('.node-status-item');
-        const eyetrackerItem = document.querySelector('[id="status-eyetracker"]').closest('.node-status-item');
+        const coordinatorNode = document.querySelector('[id="status-coordinator"]');
+        const loggerNode = document.querySelector('[id="status-hdf5"]');
+        const eyetrackerNode = document.querySelector('[id="status-eyetracker"]');
+        const tipNode = masterCard.querySelector('[id*="tip-"]');
+
+        const coordinatorItem = coordinatorNode ? coordinatorNode.closest('.node-status-item') : null;
+        const loggerItem = loggerNode ? loggerNode.closest('.node-status-item') : null;
+        const eyetrackerItem = eyetrackerNode ? eyetrackerNode.closest('.node-status-item') : null;
         const separator = leftCard.querySelector('.node-status-separator');
-        const tipItem = masterCard.querySelector('[id*="tip-"]').closest('.node-status-item');
+        const tipItem = tipNode ? tipNode.closest('.node-status-item') : null;
         
-        if (controllerItem && loggerItem && eyetrackerItem && separator && tipItem) {
+        if (coordinatorItem && loggerItem && eyetrackerItem && separator && tipItem) {
             // Remove from their current location
-            controllerItem.remove();
+            coordinatorItem.remove();
             loggerItem.remove();
             eyetrackerItem.remove();
             separator.remove();
             
-            // Insert into master card maintaining order: Controller, Logger, Eye-tracker, Separator, Tip
-            tipItem.parentNode.insertBefore(controllerItem, tipItem);
-            controllerItem.parentNode.insertBefore(loggerItem, tipItem);
+            // Insert into master card maintaining order: Coordinator, Logger, Eye-tracker, Separator, Tip
+            tipItem.parentNode.insertBefore(coordinatorItem, tipItem);
+            coordinatorItem.parentNode.insertBefore(loggerItem, tipItem);
             loggerItem.parentNode.insertBefore(eyetrackerItem, tipItem);
             eyetrackerItem.parentNode.insertBefore(separator, tipItem);
         }
@@ -816,6 +908,52 @@
             lastStatusCount = totalCount;  // Track total count globally, not array length
         } catch (error) {
             console.error('Check status error:', error);
+        }
+    }
+    
+    // Load and update component status state from backend
+    async function loadAndUpdateStatusState() {
+        try {
+            const response = await fetch(`${API_BASE}/status/state`);
+            if (!response.ok) return;
+            const statusState = await response.json();
+
+            console.log(`📊 Received status state:`, statusState);
+
+            // Update each component's status indicator and value
+            if (statusState.coordinator) {
+                const {message, status: statusValue} = statusState.coordinator;
+                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                setServiceStatus('coordinator', sensorStatus, statusValue);
+            }
+
+            if (statusState.hdf5_writer) {
+                const {message, status: statusValue} = statusState.hdf5_writer;
+                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                setServiceStatus('hdf5_writer', sensorStatus, statusValue);
+            }
+
+            if (statusState.tip_loadcell_left) {
+                const {message, status: statusValue} = statusState.tip_loadcell_left;
+                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                setTipStatus('left', sensorStatus, statusValue);
+            }
+
+            if (statusState.tip_loadcell_right) {
+                const {message, status: statusValue} = statusState.tip_loadcell_right;
+                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                setTipStatus('right', sensorStatus, statusValue);
+            }
+
+            if (statusState.eye_tracker) {
+                const {status: statusValue, source} = statusState.eye_tracker;
+                const isConnected = statusValue.toLowerCase() !== 'idle' && statusValue.toLowerCase() !== 'disconnected';
+                const isPupilNeon = (source || '').toString().toLowerCase().includes('pupil_neon');
+                console.log(`📊 Eye-tracker status: "${statusValue}" -> connected=${isConnected}`);
+                setEyetrackerStatus(isConnected ? 'connected' : 'disconnected', statusValue, { isPupilNeon });
+            }
+        } catch (error) {
+            console.error('Load status state error:', error);
         }
     }
     
@@ -1165,5 +1303,9 @@
         .catch(e => console.error('❌ Health status error:', e));
     checkNewStatusMessages();
     setInterval(checkNewStatusMessages, 2000);
+    
+    // Load and update status state periodically
+    loadAndUpdateStatusState();
+    setInterval(loadAndUpdateStatusState, 3000);
     
 })();

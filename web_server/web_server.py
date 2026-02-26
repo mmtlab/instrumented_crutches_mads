@@ -36,6 +36,9 @@ status_messages = []  # Buffer for status messages from error_handler
 status_task = None
 status_task_stop = None
 
+# Status state tracking - keeps last status for each source
+status_state = {}  # Maps source_key (e.g., "coordinator", "tip_loadcell_left") to latest status info
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and shutdown resources using lifespan events."""
@@ -92,7 +95,7 @@ def init_mads_agent():
 
 def check_status_messages():
     """Check for incoming status messages from error_handler (non-blocking)"""
-    global mads_agent, status_messages
+    global mads_agent, status_messages, status_state
     if not mads_agent:
         return
     
@@ -118,15 +121,63 @@ def check_status_messages():
                 # Ensure timestamp exists
                 if isinstance(payload, dict) and "timestamp" not in payload:
                     payload["timestamp"] = datetime.now().isoformat()
+                
+                # Extract side from source if present (e.g., "tip_loadcell_left" -> side="left")
+                source = payload.get("source", "system")
+                side = extract_side_from_source(source)
+                if side and "side" not in payload:
+                    payload["side"] = side
                     
                 status_messages.append(payload)
                 print(f"✓ Status message added to buffer. Total messages: {len(status_messages)}")
                 print(f"✓ Payload: {payload}")
+                
+                # Update status state - track last status for each source
+                source_key = get_status_source_key(source)
+                status_state[source_key] = {
+                    "source": source,
+                    "side": side,
+                    "level": payload.get("level", "info"),
+                    "message": payload.get("message", ""),
+                    "status": payload.get("status", ""),
+                    "timestamp": payload.get("timestamp")
+                }
+                print(f"✓ Status state updated: {source_key} = {status_state[source_key]}")
+                
                 # Keep only last 100 messages
                 if len(status_messages) > 100:
                     status_messages.pop(0)
     except Exception as e:
         print(f"Error receiving status message: {e}", file=sys.stderr)
+
+
+def extract_side_from_source(source: str) -> str:
+    """Extract side (left/right) from source string if present.
+    
+    Examples:
+        "tip_loadcell_left" -> "left"
+        "tip_loadcell_right" -> "right"
+        "coordinator" -> ""
+    """
+    if not source:
+        return ""
+    source_lower = source.lower()
+    if source_lower.endswith("_left"):
+        return "left"
+    if source_lower.endswith("_right"):
+        return "right"
+    return ""
+
+
+def get_status_source_key(source: str) -> str:
+    """Get normalized source key for status state tracking.
+    
+    Examples:
+        "coordinator" -> "coordinator"
+        "tip_loadcell_left" -> "tip_loadcell_left"
+        "hdf5_writer" -> "hdf5_writer"
+    """
+    return (source or "system").lower().replace(".plugin", "")
 
 
 def build_status_message_key(payload: dict) -> str:
@@ -1580,6 +1631,51 @@ async def get_status():
         "messages": recent_messages,
         "total_count": total_count  # Global count for frontend tracking
     }
+
+
+@app.get("/status/state")
+async def get_status_state():
+    """Get current status state organized by components.
+    
+    Returns categorized status for:
+    - coordinator: Controller/Coordinator status
+    - tip_loadcell_left: Left crutch tip loadcell status
+    - tip_loadcell_right: Right crutch tip loadcell status
+    - hdf5_writer: Data logger status
+    - eye_tracker: Eye tracker status
+    """
+    global status_state
+    
+    # Check for new messages first
+    check_status_messages()
+    
+    # Organize state by component type
+    organized_state = {
+        "coordinator": None,
+        "tip_loadcell_left": None,
+        "tip_loadcell_right": None,
+        "hdf5_writer": None,
+        "eye_tracker": None,
+        "raw": status_state  # Include raw state for debugging
+    }
+    
+    # Map status_state keys to organized categories
+    for source_key, status_info in status_state.items():
+        source_lower = source_key.lower()
+        
+        if "coordinator" in source_lower or "controller" in source_lower:
+            organized_state["coordinator"] = status_info
+        elif "tip_loadcell" in source_lower or "loadcell" in source_lower:
+            if status_info.get("side") == "left":
+                organized_state["tip_loadcell_left"] = status_info
+            elif status_info.get("side") == "right":
+                organized_state["tip_loadcell_right"] = status_info
+        elif "hdf5" in source_lower:
+            organized_state["hdf5_writer"] = status_info
+        elif "eye_tracker" in source_lower or "pupil" in source_lower:
+            organized_state["eye_tracker"] = status_info
+    
+    return organized_state
 
 
 @app.post("/status/dismiss")
