@@ -101,7 +101,7 @@ def check_status_messages():
         if msg_type != MessageType.NONE:
             topic, message = mads_agent.last_message()
             
-            print(f"Received message on topic '{topic}': {message}")
+            #print(f"Received message on topic '{topic}': {message}")
             if topic == "status":
                 # Extract status payload from nested structure
                 if isinstance(message, dict) and "status" in message:
@@ -196,6 +196,7 @@ def send_mads_command(command: str, acq_id: str = None):
     global mads_agent
     
     if not mads_agent:
+        print(f"❌ MADS agent not initialized", file=sys.stderr)
         return False, "MADS agent not initialized"
     
     payload_dict = {"command": command}
@@ -210,9 +211,12 @@ def send_mads_command(command: str, acq_id: str = None):
     try:
         # Publish message to ws_command topic
         topic = "ws_command"
+        print(f"📤 Publishing to '{topic}': {payload_dict}", file=sys.stderr)
         mads_agent.publish(topic, payload_dict)
+        print(f"✅ Successfully published: {payload_dict}", file=sys.stderr)
         return True, "ok"
     except Exception as exc:
+        print(f"❌ Exception publishing: {exc}", file=sys.stderr)
         return False, str(exc)
 
 
@@ -512,7 +516,7 @@ async def set_offset():
 async def health_status():
     """Send health_status command via mads."""
     try:
-        success, mads_output = await send_mads_command_async("health_status")
+        success, mads_output = await send_mads_command_async("get_agents_status")
         if not success:
             return {
                 "status": "error",
@@ -1570,7 +1574,7 @@ async def get_status():
     total_count = len(status_messages)
     recent_messages = status_messages[-20:] if total_count > 0 else []
     
-    print(f"📤 /status endpoint called - returning {len(recent_messages)} recent messages out of {total_count} total")
+    #print(f"/status endpoint called - returning {len(recent_messages)} recent messages out of {total_count} total")
     
     return {
         "messages": recent_messages,

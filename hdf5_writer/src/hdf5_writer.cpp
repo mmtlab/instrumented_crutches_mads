@@ -42,7 +42,7 @@ public:
     try {
       _converter.close();
     } catch (const H5::Exception &e) {
-      _error = "Error closing HDF5 file: " + string(e.getDetailMsg());
+      _error = "idle: error closing HDF5 file: " + string(e.getDetailMsg());
     }
   }
 
@@ -67,13 +67,13 @@ public:
 
         // firstly check if we are already recording, if yes, return a warning and do not start a new recording, to avoid overwriting the existing file or creating multiple files at the same time, which can lead to data loss or corruption
         if (_recording) {
-          _error = "Hdf5_writer: start requested while already recording";
-          return return_type::warning;
+          _error = "recording: start requested while already recording";
+          return return_type::error;
         }
 
         // check if the command contains an "id" field, which is required to create a new file for recording, if not, return an error
         if (!input.contains("id")) {
-          _error = "Hdf5_writer: start command requires an id";
+          _error = "idle: start command requires an id";
           return return_type::error;
         }
         int id = input.value("id", -1); // get the id value, default to -1 if not found
@@ -86,7 +86,7 @@ public:
 
         if (new_filename == _filename) {
           _filename = "not_handled_filename.h5"; // reset filename to avoid overwriting in case of new recording without restart
-          _error = "Hdf5_writer: filename collision detected for id: " + to_string(id);
+          _error = "idle: filename collision detected for id: " + to_string(id);
           return return_type::error;
         } else {
           _filename = new_filename;
@@ -95,59 +95,61 @@ public:
         try {
           _converter.open(_folder_path + _filename);
         } catch (const std::exception &e) {
-          _error = "Error opening HDF5 file: " + string(e.what());
+          _error = "idle: error opening HDF5 file: " + string(e.what());
           return return_type::error;
         }
         _recording = true;
-        std::cout << "Hdf5_writer: Starting recording id: " << id << std::endl;
+        std::cout << "Starting recording id: " << id << std::endl;
 
         // other actions as needed
       } else if (action == "stop") {
 
         // check if we are currently recording, if not, return a warning, to avoid potential issues with trying to close a file that is not open, which can lead to errors or crashes
         if (_recording == false) {
-          _error = "Hdf5_writer: stop requested while not recording";
-          return return_type::warning;
+          _error = "idle: stop requested while not recording";
+          return return_type::error;
         }
 
         try{
           _converter.close(); // Close the current file
         } catch (const H5::Exception &e) {
-          _error = "Error closing HDF5 file: " + string(e.getDetailMsg());
-          std::cerr << _error << std::endl;
+          _error = "recording: closing HDF5 file: " + string(e.getDetailMsg());
           return return_type::error;
         }
 
         // rename the file to indicate end of acquisition
         string new_filename = _filename.substr(1, _filename.size() - 1); // remove leading underscore
         if (std::rename((_folder_path + _filename).c_str(), (_folder_path + new_filename).c_str()) != 0) {
-          _error = "Error renaming file " + _filename + " to " + new_filename;
-          return return_type::warning;
+          _error = "recording: error renaming file " + _filename + " to " + new_filename;
+          return return_type::error;
         }
 
         _recording = false;
-        std::cout << "Hdf5_writer: Stopping recording"<< std::endl;
+        std::cout << "Stopping recording"<< std::endl;
         
 
-      } else if (action == "health_status") {
-        // Send a health status update
-        _send_health_status = true; 
-
+      } else {
+        // unrecognized command, we don't know how to handle it, so we retry
+        return return_type::retry;
       } 
-      
-      // Just continue for unrecognized commands  
+
     }
 
+    // Continue if it is not a command, if we are recording
     if (_recording) {
+
+      // check if the topic is in the keypaths, if not, return an error, to avoid potential issues
       if (std::find(_converter.groups().begin(), _converter.groups().end(), topic) == _converter.groups().end()) {
-        _error = "Topic '" + topic + "' not found in keypaths.";
-        return return_type::warning;
+        _error = "recording: topic '" + topic + "' not found in keypaths.";
+        return return_type::error;
       }
+
+      // save the data to the file
       try {
         _converter.save_to_group(input, topic);
       } catch (const std::exception &e) {
-        _error = "Error converting JSON to HDF5: " + string(e.what());
-        return return_type::warning;
+        _error = "recording: error converting JSON to HDF5: " + string(e.what());
+        return return_type::error;
       }
     }
 
@@ -165,12 +167,15 @@ public:
   return_type process(json &out) override {
     out.clear();
 
-    // This plugin it was a Sink, so we do not need to set any output, but we can handle status information here if needed, e.g. we can set the health status of the plugin in the output json object, which is then tracked by the agent and can be used for monitoring and debugging purposes
-    if (_send_health_status) {
-      out["health_status"] = _recording ? "recording" : "idle";
-      _send_health_status = false; // reset the flag
+    // Send periodic agent_status if 500ms have passed
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_health_status_time).count();
+    
+    if (elapsed >= _health_status_period) {
+      out["agent_status"] = _recording ? "recording" : "idle";
+      _last_health_status_time = now;
     }
-
+    
     // This sets the agent_id field in the output json object, only when it is
     // not empty
     if (!_agent_id.empty()) out["agent_id"] = _agent_id;
@@ -191,6 +196,8 @@ public:
     // params needs to be cast to json
     _params.merge_patch(params);
 
+    _health_status_period = _params.value("health_status_period", 500); // default to 500 ms
+    
     _folder_path = _params.value("folder_path", "./fallback_data/");
     _folder_path += (_folder_path.back() == '/') ? "" : "/"; // Ensure trailing slash
 
@@ -245,7 +252,9 @@ private:
 
   // control variables
   bool _recording = false;
-  bool _send_health_status = false; // Flag to indicate if a health status update should be sent
+  
+  int _health_status_period = 500;  // in milliseconds, default to 500 ms
+  std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
 };
 
 

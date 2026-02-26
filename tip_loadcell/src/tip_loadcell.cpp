@@ -66,44 +66,35 @@ public:
 
       string action = input.value("command", ""); // Get the command, default to empty string if not found
       if (action == "start") {
-        // Check if we are already recording, if yes, return a warning
-        if (_recording) {
-          _error = "Tip Loadcell: start requested while already recording";
-          std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
-          return return_type::warning;
-        }
 
         _recording = true;
-        std::cout << std::endl << "Tip Loadcell: Starting acquisition" << std::endl;
+        std::cout << std::endl << "Starting acquisition" << std::endl;
 
       } else if (action == "stop") {
-        // check if we are not recording, if yes, return a warning
-        if (_recording == false) {
-          _error = "Tip Loadcell: stop requested while not recording";
-          std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
-          return return_type::warning;
-        }
-        
+
         _recording = false;
-        std::cout << std::endl << "Tip Loadcell: Stopping acquisition" << std::endl;
+        std::cout << std::endl << "Stopping acquisition" << std::endl;
 
       } else if (action == "set_offset") {
         
         // Setting offset is only allowed when not recording, if we are recording return an error
         // This is to avoid changing the offset while we are acquiring data, which could lead to inconsistent data and make it difficult to understand the actual forces being applied on the crutches.
         if (_recording) {
-          _error = "Tip Loadcell: set_offset not allowed while recording, request ignored";
-          std::cout << std::endl << "\033[31m" << "Error: " << _error << "\033[0m" << std::endl;
+          _error = "recording: set_offset not allowed while recording, request ignored";
           return return_type::error;
         }
 
         _setting_offset = true;
-        std::cout << std::endl << "Tip Loadcell: Setting offset" << std::endl;
+        std::cout << std::endl << "Setting offset" << std::endl;
 
-      } 
-
-      // Just continue if the command is not recognized, we might want to handle it in the process method or just ignore it
+      } else {
+        return return_type::retry;
+      }
+    } else {
+      // if the message doesn't contain a command, we don't know how to handle it, so we retry
+      return return_type::retry;
     }
+    
 
     return return_type::success;
   }
@@ -116,7 +107,7 @@ public:
     // Not valid states or transitions are handled in load_data, here we just process data
     // Here we should have only valid states and errors related to reading the sensor
 
-    // Send periodic health_status if 500ms have passed
+    // Send periodic agent_status if 500ms have passed
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_health_status_time).count();
   
@@ -124,7 +115,7 @@ public:
     if (_recording || _setting_offset || elapsed >= _health_status_period) {
       
       if (elapsed >= _health_status_period) {
-        out["health_status"] = _recording ? "recording" : "idle";
+        out["agent_status"] = _recording ? "recording" : "idle";
         _last_health_status_time = now;
       } 
 
@@ -140,8 +131,9 @@ public:
 
             }
           } catch (const std::exception &e) {
-            _error = "Tip Loadcell: Error reading from HX711: " + string(e.what());
-            return return_type::error;
+            out["agent_status"] = "recording";
+            out["error"] = "Error reading from HX711: " + string(e.what());
+            cout << out["error"] << std::endl;
           }
 
         #else
@@ -166,12 +158,14 @@ public:
             
             // Store the offset and the test read in the output json for user feedback
             // We only fill the field for the current side
-            out["offset"] = _offset;
-            out["offset_test"] = offset_test;
+            out["info"]["offset"]["value"] = _offset;
+            out["info"]["offset"]["test"] = offset_test;
+            out["agent_status"] = "idle";
 
           } catch (const std::exception &e) {
-            _error = "Tip Loadcell: Error reading from HX711 for offset: " + string(e.what());
-            return return_type::warning;
+            out["agent_status"] = "idle";
+            out["error"] = "Error reading from HX711 for offset: " + string(e.what());
+            cout << out["error"] << std::endl;
           }
 
         #else
@@ -182,8 +176,16 @@ public:
           float offset_test = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 5.0; // Random offset test value between 0 and 5 N
 
           // Store the offset and offset_test in the output json for user feedback
-          out["offset"] = _offset;
-          out["offset_test"] = offset_test;
+          out["info"]["offset"]["value"] = _offset;
+          out["info"]["offset"]["test"] = offset_test;
+          out["agent_status"] = "idle";
+
+          // TO DEBUG, remove after testing
+          if (_already_set_offset) {
+            out["warning"] = "Offset was already set before.";
+            cout << out["warning"] << std::endl;
+          }
+          _already_set_offset = true;
 
         #endif
       }
@@ -218,9 +220,10 @@ public:
 
     if (_params.contains("side") && (_params["side"] == "left" || _params["side"] == "right")) {
       _side = _params["side"].get<string>();
-      std::cout << "Tip Loadcell: Side set to " << _side << std::endl;
+      _agent_id = "tip_loadcell_" + _side; // this is useful when the side field is not reachable
+      std::cout << "Side set to " << _side << std::endl;
     } else {
-      _error = "Tip Loadcell: Side parameter not set or invalid (only 'left' or 'right' allowed).";
+      _error = "Side parameter not set or invalid (only 'left' or 'right' allowed).";
       std::cout << _error << std::endl;
       throw std::runtime_error(_error);
     }
@@ -233,7 +236,7 @@ public:
     if (_params.contains("scaling") && _params["scaling"].contains(_side)) {
       scaling = _params["scaling"][_side].get<double>();
     } else {
-      _error = "Tip Loadcell: Scaling factor for side '" + _side + "' not found in scaling parameter.";
+      _error = "Scaling factor for side '" + _side + "' not found in scaling parameter.";
       std::cout << _error << std::endl;
       throw std::runtime_error(_error);
     }
@@ -243,14 +246,14 @@ public:
       // Initialize the HX711 sensor
       if (dataPin != -1 && clockPin != -1) {
         _hx = std::make_unique<AdvancedHX711>(dataPin, clockPin, scaling, 0.0, Rate::HZ_80);
-        std::cout << "Tip Loadcell: HX711 initialized with dataPin=" << dataPin 
+        std::cout << "HX711 initialized with dataPin=" << dataPin 
                   << ", clockPin=" << clockPin << ", scaling=" << scaling << std::endl;
       }
 
     #else
 
       // If we are not on a Raspberry Pi, we emulate the load cell readings, so no need to initialize the HX711 sensor
-      std::cout << "Tip Loadcell: Running in emulation mode, no HX711 initialization needed" << std::endl;
+      std::cout << "Running in emulation mode, no HX711 initialization needed" << std::endl;
 
     #endif
 
@@ -279,6 +282,7 @@ private:
   // Control flags
   bool _recording = false;
   bool _setting_offset = false;
+  bool _already_set_offset = false;
 
   int _health_status_period = 500; // in milliseconds, default to 500 ms
   std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();

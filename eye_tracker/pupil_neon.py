@@ -3,6 +3,7 @@ import sys
 import os
 import time
 import threading
+from enum import Enum
 
 # locate mads python package
 mads_path = subprocess.check_output(["mads", "-p"], text=True).strip()
@@ -18,6 +19,12 @@ try:
 except Exception:
     discover_one_device = None
 
+class AgentStatus(Enum):
+    STARTUP = 0
+    SHUTDOWN = 1
+    IDLE = 2
+    CONNECTED = 3
+    RECORDING = 4
 
 class PupilNeonAgent:
     def __init__(self, broker_url="tcp://localhost:9092"):
@@ -28,29 +35,40 @@ class PupilNeonAgent:
             sys.stderr.write("Cannot contact broker\n")
             sys.exit
         self.agent.connect()
+        print(self.agent.settings()) # received from the broker
+    
         self.agent.set_receive_timeout(200)
 
+        self.health_status_period = self.agent.settings().get("health_status_period", 500) # ms
+        self._last_health_status_time = time.time()
+        print(f"Health status will be published every {self.health_status_period} ms")
+
         self.device = None
-        self.running = False
         
         # Health check control
         self._health_thread = None
         self._stop_health = threading.Event()
         
-        # Connection tracking
-        self._connected = False
+        # agent status tracking
+        self.agent_status = AgentStatus.STARTUP
 
-    def publish_connection_status(self, connected: bool, error: str or None):
-        """Publish connection status to pupil_neon topic."""
+        time.sleep(0.5)  # Give some time for the agent to be fully ready
+        self.publish_agent_status(None)
+
+        # After publishing startup status, we can set the status to IDLE to indicate we are ready for commands
+        self.agent_status = AgentStatus.IDLE
+        print("Pupil Neon agent started")
+
+    def publish_agent_status(self, error: str or None):
+        """Publish agent status to pupil_neon topic."""
         payload = {
-            'pupil_neon_connected': bool(connected)
+            'agent_status': self.agent_status.name.lower()
         }
         if error is not None:
-            payload['pupil_neon_connection_error'] = error
+            payload['error'] = error
         try:
-            print(f"Publishing connection status: {payload}")
+            #print(f"Publishing agent status: {payload}")
             self.agent.publish('pupil_neon', payload)
-            print("Connection status published successfully.")
         except Exception:
             pass
 
@@ -60,38 +78,36 @@ class PupilNeonAgent:
         
         if discover_one_device is None:
             err = "pupil_labs.realtime_api not available"
-            if not self._connected:
-                self.publish_connection_status(False, err)
+            self.publish_agent_status(err)
             return False
         
         try:
             dev = discover_one_device(max_search_duration_seconds=5)
         except Exception as e:
             err = str(e)
-            if not self._connected:
-                self.publish_connection_status(False, err)
+            self.publish_agent_status(err)
             return False
 
         if dev is None:
             err = 'no device found'
-            if not self._connected:
-                self.publish_connection_status(False, err)
+            self.publish_agent_status(err)
             return False
-        print("Connected to Pupil Neon device:", dev)
 
         # Fetch current template definition
         template = dev.get_template()
         if template is None:
-            err = 'no template found on device'
-            if not self._connected:
-                self.publish_connection_status(False, err)
+            err = 'Connected to a device, but no template was found on the device'
+            self.publish_agent_status(err)
             return False
-        print("Current device template:", template)
 
         self.device = dev
         self.template = template
-        self._connected = True
-        self.publish_connection_status(True, None)
+
+        print("Connected to Pupil Neon device:", dev)
+        print("Current device template:", template)
+        self.agent_status = AgentStatus.CONNECTED
+        self.publish_agent_status(None)
+
         return True
 
     def disconnect_device(self):
@@ -105,8 +121,8 @@ class PupilNeonAgent:
                 print(f"Error closing device: {e}")
         
         self.device = None
-        self._connected = False
-        self.publish_connection_status(False, None)
+        self.agent_status = AgentStatus.IDLE
+        self.publish_agent_status(None)
         print("Disconnected from Pupil Neon device.")
 
     def check_connection_health(self):
@@ -118,21 +134,36 @@ class PupilNeonAgent:
             scene_camera = self.device.world_sensor()
             connected = False if scene_camera is None else scene_camera.connected
             
-            if self._connected and not connected:
-                self._connected = False
-                self.publish_connection_status(False, "Connection lost: scene camera not connected")
+            if (self.agent_status == AgentStatus.CONNECTED or self.agent_status == AgentStatus.RECORDING) and not connected:
+                self.agent_status = AgentStatus.IDLE
+                self.publish_agent_status("Connection lost: scene camera not connected")
                 return False
             
             return True
         except Exception as e:
-            if self._connected:
-                self._connected = False
-                self.publish_connection_status(False, f"Connection lost: {str(e)}")
+            if self.agent_status == AgentStatus.CONNECTED or self.agent_status == AgentStatus.RECORDING:
+                self.agent_status = AgentStatus.IDLE
+                self.publish_agent_status(f"Connection lost: {str(e)}")
             return False
 
+    def start_recording(self): 
+        self.device.recording_start()
+
+        # update status after starting recording, if recording fails the health loop will catch it and update the status accordingly
+        self.agent_status = AgentStatus.RECORDING
+        self.publish_agent_status(None)
+
+    def stop_recording(self): 
+        self.device.recording_stop_and_save()
+
+        # update status after stopping recording, if recording fails the health loop will catch it and update the status accordingly
+        self.agent_status = AgentStatus.CONNECTED
+        self.publish_agent_status(None)
+
     def _publish_offset_stats(self, mean_to, std_to, med_to, mean_rt, std_rt, med_rt):
-        """Publish time offset and roundtrip stats."""
+        """Publish time offset and roundtrip stats. Also update the agent status"""
         payload = {
+            'agent_status': self.agent_status.name.lower(),
             'time_offset_ms_mean': mean_to,
             'time_offset_ms_std': std_to,
             'time_offset_ms_median': med_to,
@@ -216,9 +247,9 @@ class PupilNeonAgent:
                     pass
                 
                 self.device = None
-                if self._connected:
-                    self._connected = False
-                    self.publish_connection_status(False, f"disconnected due to {str(e)}")
+                if self.agent_status == AgentStatus.CONNECTED or self.agent_status == AgentStatus.RECORDING:
+                    self.agent_status = AgentStatus.IDLE
+                    self.publish_agent_status(f"disconnected due to {str(e)}")
             
             # Wait 5 seconds before next estimate
             for _ in range(50):
@@ -292,10 +323,14 @@ class PupilNeonAgent:
 
     def run(self):
         """Main run loop - wait for connect/disconnect commands."""
-        self.running = True
 
         try:
-            while self.running:
+            while True:
+                # Firtly send a heartbeat with the current status if self.health_status_period is passed
+                if time.time() - self._last_health_status_time > self.health_status_period / 1000.0:
+                    self.publish_agent_status(None)
+                    self._last_health_status_time = time.time()
+
                 msg_type = self.agent.receive()
                 if msg_type == MessageType.NONE:
                     time.sleep(0.01)
@@ -305,45 +340,59 @@ class PupilNeonAgent:
                 
                 if not isinstance(message, dict):
                     continue
-                
-                if topic != 'command':
-                    continue
 
                 cmd = message.get('command')
                 if not cmd:
                     continue
 
                 cmd = str(cmd).lower()
-                
-                if cmd == 'pupil_neon_connect':
-                    print("Received pupil_neon_connect command")
-                    if self.connect_device():
-                        self.start_health_loop()
-                
-                elif cmd == 'pupil_neon_disconnect':
-                    print("Received pupil_neon_disconnect command")
-                    self.stop_health_loop()
-                    self.disconnect_device()
 
-                elif cmd == 'condition':
-                    label = message.get('label', 'NA')
-                    print(f"Received condition command with label: {label}")
-                    if self._connected and self.device is not None:
-                        self.device.send_event(label)
+                # we reach here if we have a valid command message
+                # now the agent should react to the command accordinding to its current state and the command type
 
-                elif cmd == 'start':
-                    subject_id = message.get('subject_id', -1)
-                    session_id = message.get('session_id', -1)
-                    acquisition_id = message.get('id', -1)
-                    print(f"Received start command with subject_id: {subject_id}, session_id: {session_id}, acquisition_id: {acquisition_id}")
-                    if self._connected and self.device is not None:
-                        self.fill_template(subject_id, session_id, acquisition_id)
-                        self.device.recording_start()
+                match self.agent_status:
+                    case AgentStatus.IDLE | AgentStatus.STARTUP:
+                        # ignore all commands except connect
+                        if cmd == 'pupil_neon_connect':
+                            print("Received connect command")
+                            if self.connect_device():
+                                self.start_health_loop()
 
-                elif cmd == 'stop':
-                    print("Received stop command")
-                    if self._connected and self.device is not None:
-                        self.device.recording_stop_and_save()
+                    case AgentStatus.CONNECTED:
+                        # ignore all commands except disconnect andstart
+                        if cmd == 'pupil_neon_disconnect':
+                            print("Received disconnect command")
+                            self.stop_health_loop()
+                            self.disconnect_device()
+
+                        elif cmd == 'start':
+                            subject_id = message.get('subject_id', -1)
+                            session_id = message.get('session_id', -1)
+                            acquisition_id = message.get('id', -1)
+                            print(f"Received start command with subject_id: {subject_id}, session_id: {session_id}, acquisition_id: {acquisition_id}")
+                            self.fill_template(subject_id, session_id, acquisition_id)
+                            self.start_recording()
+                            
+
+                    case AgentStatus.RECORDING:
+                        # ignore all commands except stop, condition and disconnect
+                        # Assure to stop and save the recording on disconnect or stop command, otherwise we might lose data
+                        if cmd == 'condition':
+                            label = message.get('label', 'NA')
+                            self.device.send_event(label)
+                            print(f"Sent condition event with label: {label}")
+                            # this does not change the agent status, we are still recording after sending the event
+
+                        elif cmd == 'stop':
+                            print("Received stop command")
+                            self.stop_recording()
+
+                        elif cmd == 'pupil_neon_disconnect':
+                            print("Received disconnect command")
+                            self.stop_recording()
+                            self.stop_health_loop()
+                            self.disconnect_device()
+
 
         except KeyboardInterrupt:
             pass
@@ -356,7 +405,6 @@ def main():
     exit_code = 0
     try:
         agent = PupilNeonAgent()
-        print("Pupil Neon agent started")
         agent.run()
     except KeyboardInterrupt:
         exit_code = 0
@@ -364,16 +412,21 @@ def main():
         sys.stderr.write(f"Error running PupilNeonAgent: {e}\n")
         exit_code = 1
     finally:
-        sys.stderr.write("Shutting down PupilNeonAgent\n")
         if agent:
             try:
                 agent.stop_health_loop()
-                if agent._connected:
+                if agent.agent_status == AgentStatus.CONNECTED or agent.agent_status == AgentStatus.RECORDING:
+                    if agent.agent_status == AgentStatus.RECORDING:
+                        agent.device.recording_stop_and_save()
                     agent.disconnect_device()
+
                 # Publish shutdown status BEFORE disconnecting from broker
-                agent.publish_connection_status(False, "Agent shutting down")
-                time.sleep(0.1)  # Give time for message to be sent
+                agent.agent_status = AgentStatus.SHUTDOWN
+                agent.publish_agent_status("Agent shutting down")
+
+                time.sleep(0.5)  # Give time for message to be sent
                 agent.agent.disconnect()
+
             except Exception as e:
                 sys.stderr.write(f"Error shutting down PupilNeonAgent: {e}\n")
         

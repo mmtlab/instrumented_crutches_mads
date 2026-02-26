@@ -1155,6 +1155,14 @@
     configureStatusPanel();
     loadLastCondition();
     updateUI();
+    console.log('🔄 Requesting health status on page load...');
+    fetch(`${API_BASE}/health_status`, { method: 'POST' })
+        .then(r => {
+            console.log(`✅ Health status request sent (${r.status})`);
+            return r.json();
+        })
+        .then(data => console.log('Health status response:', data))
+        .catch(e => console.error('❌ Health status error:', e));
     checkNewStatusMessages();
     setInterval(checkNewStatusMessages, 2000);
     

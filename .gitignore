@@ -1,4 +1,4 @@
-/controller/build/
+/coordinator/build/
 /status_handler/build/
 /logger/build/
 /hdf5_writer/build/

@@ -30,8 +30,7 @@ Windows:
 
 ```powershell
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
-cmake --build build --config Release
-cmake --install build --config Release
+cmake --build build --config Release -t install
 ```
 
 

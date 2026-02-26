@@ -34,6 +34,14 @@
 using namespace std;
 using json = nlohmann::json;
 
+// Structure to store the last status of an agent
+struct AgentStatus {
+  string status;
+  string level;
+  string message;
+  string side;
+  chrono::steady_clock::time_point last_update;
+};
 
 // Plugin class. This shall be the only part that needs to be modified,
 // implementing the actual functionality
@@ -44,174 +52,238 @@ public:
   // Typically, no need to change this
   string kind() override { return PLUGIN_NAME; }
 
+  // Add an agent to monitor
+  void add_agent(const string& source_id) {
+    if (_agents.find(source_id) == _agents.end()) {
+      // If the agent is not already monitored, add it with an initial status of "unknown"
+      _agents[source_id] = AgentStatus{"unknown", "", "", "", chrono::steady_clock::now()};
+      if (_debug) {
+        cout << "Added agent '" << source_id << "' to monitoring list" << endl;
+      }
+    }
+  }
+
+  // Remove an agent from monitoring
+  void remove_agent(const string& source_id) {
+    if (_agents.erase(source_id) > 0) {
+      if (_debug) {
+        cout << "Removed agent '" << source_id << "' from monitoring list" << endl;
+      }
+    }
+  }
+
+  // Get the last status of an agent
+  bool get_agent_status(const string& source_id, AgentStatus& status) const {
+    auto it = _agents.find(source_id);
+    if (it != _agents.end()) {
+      status = it->second;
+      return true;
+    }
+    return false;
+  }
+
+  // Get all monitored agents
+  vector<string> get_monitored_agents() const {
+    vector<string> agents;
+    for (const auto& pair : _agents) {
+      agents.push_back(pair.first);
+    }
+    return agents;
+  }
+
   // Implement the actual functionality here
   return_type load_data(json const &input, string topic = "") override {
-    
+
+    // if the topic is empty, we cannot determine the source of the message, so we retry 
+    if (topic.empty()) {
+      return return_type::retry;
+    }
+
     // initialize variables to build the message and determine the level
+    string source = topic; // default 
     string level = "";
+    string status = "";
     string message = "";
     string side = "";
     bool has_status = false;
 
-    // Get source from agent_id or name field, or use topic as source
-    string source = topic.empty() ? "unknown" : topic;
-    if (input.contains("name")) {
-      try {
+    if (topic == "agent_event") {
+
+      // For agent events, we want to set the source as the name of the agent if available, otherwise we keep the topic as source
+      if (input.contains("name")) {
         source = input["name"].get<string>();
-      } catch (...) {
-        // keep topic as source
       }
-    } else if (input.contains("agent_id")) {
-      try {
-        source = input["agent_id"].get<string>();
-      } catch (...) {
-        // keep topic as source
-      }
-    }
 
-    // Get side from the side field if present, or from settings if present (from modified_settings first, then from settings)
-    // If the side is not specified, it will be set to void and the message will be considered as not related to a specific side
-    if (input.contains("side") && input["side"].is_string()) {
-
-      side = input["side"].get<string>();
-
-    } else if (input.contains("modified_settings") && input["modified_settings"].is_object()) {
-
-      try {
-        auto settings = input["modified_settings"];
-        if (settings.contains("side") && settings["side"].is_string()) {
+      // if present we retrive the side from modified_settings or settings, to add it to the message and have more context about the event
+      // if side value is "unknown", we havo to decide how to handle it
+      if (input.contains("modified_settings") || input.contains("settings")){
+        json settings = input.contains("modified_settings") ? input["modified_settings"] : input["settings"];
+        if (settings.contains("side")) {
           side = settings["side"].get<string>();
-        }
-      } catch (...) {}
-
-    } else if (input.contains("settings") && input["settings"].is_object()) {
-
-      try {
-        auto settings = input["settings"];
-        if (settings.contains("side") && settings["side"].is_string()) {
-          side = settings["side"].get<string>();
-        }
-      } catch (...) {}
-
-    }
-
-    // Handle the shutdown/startup messages
-    if (input.contains("event")){
-      if (input["event"].is_string()){
-        string event = input["event"].get<string>();
-        if (event == "shutdown" || event == "startup") {
-          has_status = true;
-
-          // if you have more status handle here the according levels
-          level = "info"; // default level is info, but it can be changed based on the event
-          if (event == "shutdown"){
-            level = "critical";
-          } else if (event == "startup") {
-            level = "info";
-          }
-          
-          // Build shutdown message
-          std::ostringstream oss;
-          oss << event;
-          
-          message = oss.str();
-          
-          if (_debug) {
-            std::cout << "StatusHandler: the agent " << source << " is " << event << "." << std::endl;
+          if (side == "unknown") {
+            // if the side is unknown, we can either set it to an empty string or keep it as "unknown", depending on how we want to handle it in the rest of the code, for now we set it to empty string to avoid having "unknown" as a value in the messages
+            side = "";
           }
         }
       }
-    }
-
-    // Handle offset messages from loadcell topic
-    if (input.contains("offset") && input.contains("offset_test")) {
-      has_status = true;
-      level = "warning"; // we want to consider the offset setting as a warning, because it is not an error but it is an important event that we want to be aware of
-
-      // Build offset message
-      std::ostringstream oss;
-      oss << "offset = " << input["offset"] << " N, test = " << input["offset_test"] << " N";
-      
-      message = oss.str();
-      if (_debug) {
-        std::cout << "StatusHandler: offset detected topic='" << topic << "' message='" << message << "'" << std::endl;
-      }
-    }
-
-    // TODO: implement the same logic in pupil_neon.py agent and then correct this part
-    // Handle pupil neon info messages 
-    if (input.contains("pupil_neon_connected") || input.contains("pupil_neon_connection_error")) {
-      has_status = true;
-
-      // Build neon info message
-      std::ostringstream oss;
-      oss  << (input.value("pupil_neon_connected", false) ? "connected" : "disconnected");
-
-      if (input.contains("pupil_neon_connection_error") && !input["pupil_neon_connection_error"].is_null()) {
-        level = "error";
-        oss << " error: " << input["pupil_neon_connection_error"].get<string>();
-      } else {
-        level = "info";
-      }
-      
-      message = oss.str();
-      
-      if (_debug) {
-        std::cout << "StatusHandler: pupil_neon topic='" << topic << "' message='" << message << "'" << std::endl;
-      }
-    }
-
-    // Handle health info messages 
-    if (input.contains("health_status")) {
-
       // add side only when needed to distinguish the topic
-      string underscore_side = side.empty() ? "" : "_" + side;
+      source += side.empty() ? "" : "_" + side;; // e.g. tip_loadcell_left, tip_loadcell_right, coordinator (if no side specified)
 
-      if (input["health_status"].is_string()) {
-        message = input["health_status"].get<string>();
-        has_status = true;
-        level = "info";
+      // Handle agent events (e.g. startup, shutdown, etc.)
+      if (input.contains("event")) {
+        string event = input["event"].get<string>();
+        if (event == "startup") {
+          level = "info";
+          status = "startup";
+          message = "Agent startup";
+          has_status = true;
+        } else if (event == "shutdown") {
+          level = "critical";
+          status = "shutdown";
+          message = "Agent shutdown";
+          has_status = true;
+        } else if (event == "message") {
+          if (input.contains("info")){
+            json info = input["info"];
+            if (info.contains("warning")) {
+              level = "warning";
+            } else if (info.contains("error")) {
+              level = "error";
+            } else if (info.contains("critical")) {
+              level = "critical";
+            } 
+
+            // first field is the level, the second field is the message
+            string received_message =  info[level][1].get<string>();
+            
+            // the first word (until the first :) is the status, the rest is the message
+            size_t colon_pos = received_message.find(':');
+            if (colon_pos != string::npos) {
+              status = received_message.substr(0, colon_pos);
+              message = received_message.substr(colon_pos + 1);
+            } else {
+              status = "unknown";
+              message = received_message;
+            }
+            has_status = true;
+          }
+        } 
+      } else {
+        // if there is no event field, we don't know how to handle it, so we retry
+        return return_type::retry;
       }
 
-      if (_debug) {
-        std::cout << "StatusHandler: health status - topic='" << topic << "' message='" << message << "'" << std::endl;
+    } else { // All the topics different from agent_event if it contains agent_status
+      
+      // Handle health info messages 
+      if (input.contains("agent_status")) {
+
+        // Get side from the side field if present
+        // If the side is not specified, it will be set to void and the message will be considered as not related to a specific side
+        if (input.contains("side")) {
+          if(input["side"].is_string()) {
+            side = input["side"].get<string>();
+          }
+        } 
+        // add side only when needed to distinguish the topic
+        source += side.empty() ? "" : "_" + side;; // e.g. tip_loadcell_left, tip_loadcell_right, coordinator (if no side specified)
+
+        if (input["agent_status"].is_string()) {
+          status = input["agent_status"].get<string>();
+          level = "info";
+
+          // Check if is info, warning, error or critical based on the agent_status value, to set the level accordingly
+          if (input.contains("info")) {
+            // Handle offset messages from loadcell topic
+            if (input["info"].contains("offset_value") && input["info"].contains("offset_test")) {
+              message = "offset value: " + to_string(input["info"]["offset_value"].get<float>()) + ", offset test: " + to_string(input["info"]["offset_test"].get<float>());
+            }
+
+            // Add here other info to handle
+          }
+
+          if (input.contains("warning")) {
+            level = "warning";
+            message = input["warning"].get<string>();
+          }
+
+          if (input.contains("error")) {
+            level = "error";
+            message = input["error"].get<string>();
+          }
+
+          if (input.contains("critical")) {
+            level = "critical";
+            message = input["critical"].get<string>();
+          }
+          
+          has_status = true;
+        }
+      } else if (input.contains("command")) {
+        // Handle the request of sending an update of the current agents status
+        if (input["command"].is_string()) {
+          if (input["command"].get<string>() == "get_agents_status") {
+            _send_agents_status = true;
+            return return_type::success;
+          }
+        }
+
+      } else {
+        // if the message doesn't contain agent_status, we don't know how to handle it, so we retry
+        return return_type::retry;
       }
     }
 
-    auto get_string = [&](const char *key) -> string {
-      if (!input.contains(key)) return "";
-      try { return input[key].get<string>(); } catch (...) { return ""; }
-    };
 
-    // If you want to mask certain messages based on the level, remove here the level to not handle
-    bool is_relevant =  has_status && (level == "info" || level == "warning" || level == "error" || level == "fatal" || level == "critical");
-    
+    /* Controlliamo se il messaggio è rilevante per noi in base al livello e allo status, ad esempio:
+      1   - Agente in attesa di avvio registrazione/connessione (ready): se ricevo un messaggio di idle e stavo registrando, se ricevo un messaggio di startup ed ero morto, oppure se ricevo un idle e prima non avevo ricevuto il messaggio di startup
+      1.2 - Agente in attesa di connessione con sensore (not connected): se l'agente è attivo, ma richiede di essere connesso al sensore (neon). Continuo a riceve idle
+      1.3 - Agente connesso e in attesa di registrazione (connected and ready): se ricevo connected 
+      2   - Agente in registrazione (recording): se ricevo un messaggio di recording e non stavo registrando
+      4   - Agente morto (dead): se ricevo un messaggio di shutdown
+      5   - Aggiornamento info agente: se ricevo un messaggio di offset
+    */
+    bool is_relevant = false; 
+
+    // Check if the agent status has changed (excluding last_update timestamp)
+    if (has_status) {
+      auto it = _agents.find(source);
+      if (it == _agents.end()) {
+        // New agent - always relevant
+        is_relevant = true;
+      } else {
+        // Existing agent - check if any field has changed
+        const AgentStatus& old_status = it->second;
+        if (old_status.status != status || 
+            old_status.level != level || 
+            old_status.message != message || 
+            old_status.side != side) {
+          is_relevant = true;
+        }
+      }
+    }
+
+    // ALWAYS update the status of the agent in the internal tracking map, even if the message is not relevant, to have an updated status of the agent and be able to trigger the relevant messages based on the status changes
+    if (has_status) {
+      // Update the agent status in the internal tracking map
+      if (_agents.find(source) == _agents.end()) {
+        // If agent doesn't exist, add it
+        add_agent(source);
+      }
+
+      // Update the existing agent status with current timestamp
+      _agents[source] = AgentStatus{status, level, message, side, chrono::steady_clock::now()};
+    }
+
     // proceed only if the message is relevant based on the level, otherwise ignore it
     if (is_relevant) {
-
-      // fallback if the message has not been handled in specific cases above
-      if (message.empty()) {
-        message = get_string("message");
-      }
-      if (message.empty()) {
-        message = get_string("detail");
-      }
-      if (message.empty()) {
-        message = "Unhandled error event";
-      }
-      
-      if (_debug) {
-        std::cout << "StatusHandler: issue detected level='" << level << "' source='" << source << "'";
-        if (!side.empty()) std::cout << " side='" << side << "'";
-        std::cout << " message='" << message << "'" << std::endl;
-      }
 
       // Build the output json object with the relevant information about the status, and push it to the pending queue
       // note: timestamp and timecode are added by the agent, so no need to add them here (they are the timestamps of the device running this plugin)
       json out_msg;
       out_msg["source"] = source;
-      out_msg["topic"] = topic;
       out_msg["level"] = level;
+      out_msg["status"] = status;
       out_msg["message"] = message;
       if (!side.empty()) out_msg["side"] = side;
 
@@ -229,6 +301,58 @@ public:
   return_type process(json &out) override {
     out.clear();
 
+    if (_send_agents_status) {
+      for (const auto& pair : _agents) {
+        const string& source_id = pair.first;
+        const AgentStatus& agent_status = pair.second;
+
+        json out_msg;
+        out_msg["source"] = source_id;
+        out_msg["level"] = agent_status.level;
+        out_msg["status"] = agent_status.status;
+        out_msg["message"] = agent_status.message;
+        if (!agent_status.side.empty()) out_msg["side"] = agent_status.side;
+
+        _pending.push_back(out_msg);
+        if (_pending.size() > _max_pending) {
+          _pending.pop_front();
+        }
+      }
+
+      _send_agents_status = false;
+    }
+
+    // Send "unreachable" status if no update received for more than 3 seconds for each agent, and update the status to "unreachable" in the internal tracking map
+    auto now = std::chrono::steady_clock::now();
+    
+    for (auto& pair : _agents) {
+      string source_id = pair.first;
+      AgentStatus& agent_status = pair.second;
+
+      // Calculate elapsed time for this specific agent
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - agent_status.last_update).count();
+
+      if (agent_status.status != "unreachable" && elapsed >= _unreachable_agent_timeout) {
+        agent_status.status = "unreachable";
+        agent_status.level = "critical";
+        agent_status.message = "No update received for more than " + to_string(_unreachable_agent_timeout) + " ms";
+        agent_status.last_update = now;
+
+        // Build the output json object with the relevant information about the status, and push it to the pending queue
+        json out_msg;
+        out_msg["source"] = source_id;
+        out_msg["level"] = agent_status.level;
+        out_msg["status"] = agent_status.status;
+        out_msg["message"] = agent_status.message;
+        if (!agent_status.side.empty()) out_msg["side"] = agent_status.side;
+
+        _pending.push_back(out_msg);
+        if (_pending.size() > _max_pending) {
+          _pending.pop_front();
+        }
+      }
+    }
+
     if (_pending.empty()) {
       if (_debug) {
         // just print a dot to indicate that the plugin is waiting for messages
@@ -241,7 +365,7 @@ public:
     _pending.pop_front();
 
     if (_debug) {
-      std::cout << std::endl << "StatusHandler: emitting status=" << out.dump(4) << std::endl;
+      std::cout << std::endl << out.dump(4) << std::endl;
     }
 
     // This sets the agent_id field in the output json object, only when it is
@@ -263,6 +387,7 @@ public:
     _max_pending = _params.value("max_pending", 100);
     _debug = _params.value("debug", false);
 
+    _unreachable_agent_timeout = _params.value("unreachable_agent_timeout", 3000); // default to 3000 ms
 
   }
 
@@ -280,6 +405,17 @@ private:
   // Define the fields that are used to store internal resources
   std::deque<json> _pending;
   size_t _max_pending = 100;
+
+  // Map to store the last status of each monitored agent with timestamp
+  // Key: source_id (e.g., "coordinator", "tip_loadcell_left", "tip_loadcell_right")
+  // Value: AgentStatus containing status, level, message, side and timestamp
+  std::map<string, AgentStatus> _agents;
+
+  // Timeout in milliseconds before considering an agent as unreachable
+  int _unreachable_agent_timeout = 3000;
+
+  bool _send_agents_status = false;
+
   bool _debug = false;
 };
 
