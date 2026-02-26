@@ -59,16 +59,6 @@ Inserisci i dati attuali di soggetto e sessione
 
 
 
-Status handler controlla gli stati degli agenti e comunica su status se sono avvenuti dei cambi di stato secondo queste regole:
-1 - Agente in attesa di avvio registrazione/connessione (ready): se ricevo un messaggio di idle e stavo registrando, se ricevo un messaggio di startup ed ero morto, oppure se ricevo un idle e prima non avevo ricevuto il messaggio di startup
-1.2 Agente in attesa di connessione con sensore (not connected): se l'agente è attivo, ma richiede di essere connesso al sensore (neon). Continuo a riceve idle
-1.3 Agente connesso e in attesa di registrazione (connected and ready): se ricevo connected 
-2 - Agente in registrazione (recording): se ricevo un messaggio di recording e non stavo registrando
-3 - Agente non attivo (unreacheable): se passano più di 3 secondi dall'ultimo messaggio di aggiornamento idle/recording ricevuto
-4 - Agente morto (dead): se ricevo un messaggio di shutdown
-5 - Aggiornamento info agente: se ricevo un messaggio di offset
-
-Controlliamo agent_event per i messaggi di errore e warning, e per startup e shutdown
 
 
 Da dire a Paolo
@@ -76,3 +66,7 @@ Da dire a Paolo
 - Non trova il plugin e mi dà errore dei driver con la versione più recente (88) di mads
 - dont-block in agent_event è sempre null anche se attivo
 - Gli agenti python non pubblicano su agent_event
+
+
+NEXT:
+- aggiornare il feedback dell'offset con la gestione attuale degli stati
