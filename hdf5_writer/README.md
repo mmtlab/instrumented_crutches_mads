@@ -81,7 +81,7 @@ keypaths = {"tip_loadcell" = ["force.right", "force.left"],
             "pupil_neon" = ["recording_id", "time_offset_ms_mean", "time_offset_ms_std", "time_offset_ms_median", "roundtrip_duration_ms_mean", "roundtrip_duration_ms_std", "roundtrip_duration_ms_median"]}
 ```
 
-The keypaths `timecode`, `timestamp`, and `hostname` are always added to the list of keypaths, even if not specified in the INI file. Since `timecode` and `timestamp` are always logged, make sure that if you publish a message for one crutch, you also fill the other crutch's field with a NaN. This ensures that every row in the timestamp dataset has a corresponding row in the force dataset.
+The keypaths `timecode` and `timestamp` are always added to the list of keypaths, even if not specified in the INI file. Since `timecode` and `timestamp` are always logged, make sure that if you publish a message for one crutch, you also fill the other crutch's field with a NaN. This ensures that every row in the timestamp dataset has a corresponding row in the force dataset.
 
 
 

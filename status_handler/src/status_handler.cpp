@@ -109,6 +109,12 @@ public:
 
     if (topic == "agent_event") {
 
+      // Since agent_event topic listens to all the agents in the mads network, we need to filter on the sub_topic of this agent (list of names in _params[sub_topic])
+      if (!_params["sub_topic"].contains(topic)) {
+        // If the agent name is not in the list of sub_topics, we don't process the message
+        return return_type::retry;
+      }
+
       // For agent events, we want to set the source as the name of the agent if available, otherwise we keep the topic as source
       if (input.contains("name")) {
         source = input["name"].get<string>();
@@ -185,6 +191,7 @@ public:
             side = input["side"].get<string>();
           }
         } 
+        
         // add side only when needed to distinguish the topic
         source += side.empty() ? "" : "_" + side;; // e.g. tip_loadcell_left, tip_loadcell_right, coordinator (if no side specified)
 
@@ -194,12 +201,22 @@ public:
 
           // Check if is info, warning, error or critical based on the agent_status value, to set the level accordingly
           if (input.contains("info")) {
-            // Handle offset messages from loadcell topic
-            if (input["info"].contains("offset_value") && input["info"].contains("offset_test")) {
-              message = "offset value: " + to_string(input["info"]["offset_value"].get<float>()) + ", offset test: " + to_string(input["info"]["offset_test"].get<float>());
-            }
 
-            // Add here other info to handle
+            cout << "Received info message: " << input["info"].dump() << endl;
+            // Handle offset messages from loadcell topic
+            if (input["info"].contains("offset")){
+              if (input["info"]["offset"].contains("value") && input["info"]["offset"].contains("test")) {
+                // Format message like: "offset value = 50.0 N, offset test = 5.0 N"
+                float offset_value = input["info"]["offset"]["value"].get<float>();
+                float offset_test = input["info"]["offset"]["test"].get<float>();
+                std::ostringstream val_str, test_str;
+                val_str << std::fixed << std::setprecision(1) << offset_value;
+                test_str << std::fixed << std::setprecision(1) << offset_test;
+                message = "offset value: " + val_str.str() + " N, offset test: " + test_str.str() + " N";
+              }
+            }
+            
+            // Add here any other info to handle
           }
 
           if (input.contains("warning")) {
@@ -388,6 +405,8 @@ public:
     _debug = _params.value("debug", false);
 
     _unreachable_agent_timeout = _params.value("unreachable_agent_timeout", 3000); // default to 3000 ms
+
+    cout << "Params:" << _params.dump(4) << endl;
 
   }
 

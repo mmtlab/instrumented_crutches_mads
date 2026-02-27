@@ -180,13 +180,6 @@ public:
           out["info"]["offset"]["test"] = offset_test;
           out["agent_status"] = "idle";
 
-          // TO DEBUG, remove after testing
-          if (_already_set_offset) {
-            out["warning"] = "Offset was already set before.";
-            cout << out["warning"] << std::endl;
-          }
-          _already_set_offset = true;
-
         #endif
       }
     } else {
@@ -282,7 +275,6 @@ private:
   // Control flags
   bool _recording = false;
   bool _setting_offset = false;
-  bool _already_set_offset = false;
 
   int _health_status_period = 500; // in milliseconds, default to 500 ms
   std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();

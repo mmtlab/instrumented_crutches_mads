@@ -1,3 +1,4 @@
+from cProfile import label
 import subprocess
 import sys
 import os
@@ -44,6 +45,7 @@ class PupilNeonAgent:
         print(f"Health status will be published every {self.health_status_period} ms")
 
         self.device = None
+        self.last_condition_event = None
         
         # Health check control
         self._health_thread = None
@@ -154,11 +156,39 @@ class PupilNeonAgent:
         self.publish_agent_status(None)
 
     def stop_recording(self): 
+
+        if self.last_condition_event is not None:
+            self.device.send_event(self.last_condition_event + ".end")
+            print(f"Sent condition event with label: {self.last_condition_event}.end")
+            self.last_condition_event = None
+
+        time.sleep(0.1) # add a short delay to ensure the .end event is processed before stopping the recording
         self.device.recording_stop_and_save()
 
         # update status after stopping recording, if recording fails the health loop will catch it and update the status accordingly
         self.agent_status = AgentStatus.CONNECTED
         self.publish_agent_status(None)
+
+    def send_condition_event(self, label):
+
+        # if it is the first condition event we send it with the .begin suffix
+        if self.last_condition_event is None:
+            self.device.send_event(label + ".begin")
+            print(f"Sent condition event with label: {label}.begin")
+            self.last_condition_event = label
+
+        elif self.last_condition_event != label:
+            self.device.send_event(self.last_condition_event + ".end")
+            print(f"Sent condition event with label: {self.last_condition_event}.end")
+            time.sleep(0.05) # add a short delay to ensure the .end event is processed before the next .begin event
+            self.device.send_event(label + ".begin")
+            print(f"Sent condition event with label: {label}.begin")
+            self.last_condition_event = label
+        
+        else:
+            return
+
+        
 
     def _publish_offset_stats(self, mean_to, std_to, med_to, mean_rt, std_rt, med_rt):
         """Publish time offset and roundtrip stats. Also update the agent status"""
@@ -379,8 +409,7 @@ class PupilNeonAgent:
                         # Assure to stop and save the recording on disconnect or stop command, otherwise we might lose data
                         if cmd == 'condition':
                             label = message.get('label', 'NA')
-                            self.device.send_event(label)
-                            print(f"Sent condition event with label: {label}")
+                            self.send_condition_event(label)
                             # this does not change the agent status, we are still recording after sending the event
 
                         elif cmd == 'stop':

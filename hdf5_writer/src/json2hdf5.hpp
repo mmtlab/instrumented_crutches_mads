@@ -139,7 +139,7 @@ public:
   auto &append_keypath(std::string const &dataset_name,
                        std::string const &group_name) {
     if (_keypaths.find(group_name) == _keypaths.end()) {
-      _keypaths[group_name] = {"timecode", "timestamp", "hostname"};
+      _keypaths[group_name] = {"timecode", "timestamp"};
     }
     // Add dataset name to the list of data paths
     _keypaths[group_name].push_back(dataset_name);

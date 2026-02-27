@@ -210,15 +210,15 @@
     const tipStatusClasses = ['node-status-unknown', 'node-status-live', 'node-status-dead'];
     const statusValueClasses = ['node-status-value-ready', 'node-status-value-attn', 'node-status-value-recording'];
 
-    function deriveIndicatorStatus(message, statusValue) {
-        const msg = (message || '').toString().trim().toLowerCase();
+    function deriveIndicatorStatus(statusValue) {
         const status = (statusValue || '').toString().trim().toLowerCase();
 
-        if (msg.includes('startup')) return 'live';
-        if (msg.includes('shutdown')) return 'dead';
+        if (status === 'startup') return 'live';
         if (status === 'idle') return 'live';
         if (status === 'recording') return 'live';
+        if (status === 'connected') return 'live';
         if (status === 'shutdown') return 'dead';
+        if (status === 'unreachable') return 'dead';
 
         return 'unknown';
     }
@@ -245,19 +245,19 @@
         }
 
         if (normalized === 'connected') {
-            valueLabel.textContent = 'CONNECTED';
+            valueLabel.textContent = 'ready';
             valueLabel.classList.add('node-status-value-ready');
             return;
         }
 
-        if (normalized === 'disconnected') {
-            valueLabel.textContent = 'DISCONNECTED';
+        if (normalized === 'unreachable') {
+            valueLabel.textContent = 'unreachable';
             valueLabel.classList.add('node-status-value-attn');
             return;
         }
 
         if (normalized === 'recording') {
-            valueLabel.textContent = 'RECORDING';
+            valueLabel.textContent = 'recording';
             valueLabel.classList.add('node-status-value-recording');
             return;
         }
@@ -336,18 +336,14 @@
 
         const isConnected = status === 'connected';
         
-        console.log(`🔄 setEyetrackerStatus called with: "${status}"`);
-        
         // Update Status panel
         indicator.classList.remove(...eyetrackerStatusClasses);
         if (isConnected) {
             indicator.classList.add('node-status-connected');
-            stateLabel.textContent = 'Connected';
-            console.log('✅ Eye-tracker Status Panel: Connected');
+            stateLabel.textContent = 'Connected';;
         } else {
             indicator.classList.add('node-status-disconnected');
             stateLabel.textContent = 'Disconnected';
-            console.log('❌ Eye-tracker Status Panel: Disconnected');
         }
         
         // Update Eye-tracker feedback panel and button
@@ -434,7 +430,7 @@
                 setServiceStatus('hdf5_writer', 'dead', statusValue);
             }
         } else if (statusValue) {
-            const derivedStatus = deriveIndicatorStatus(text, statusValue);
+            const derivedStatus = deriveIndicatorStatus(statusValue);
             if (side) {
                 setTipStatus(side, derivedStatus, statusValue);
             }
@@ -448,9 +444,9 @@
     
     // Update offset display values
     function updateOffsetDisplay(message, side) {
-        // Parse message like: "offset = 50 N, test = 5 N"
-        const offsetMatch = message.match(/offset\s*=\s*([-\d.]+)/i);
-        const testMatch = message.match(/test\s*=\s*([-\d.]+)/i);
+        // Parse message like: "offset value: 1.7 N, offset test: 4.3 N"
+        const offsetMatch = message.match(/offset\s*value\s*:\s*([-\d.]+)\s*N/i);
+        const testMatch = message.match(/offset\s*test\s*:\s*([-\d.]+)\s*N/i);
         const offsetValue = offsetMatch ? parseFloat(offsetMatch[1]) : null;
         const testValue = testMatch ? parseFloat(testMatch[1]) : null;
         
@@ -835,12 +831,9 @@
             const messages = data.messages || [];
             const totalCount = data.total_count || data.count || 0;
             
-            console.log(`📥 Received ${messages.length} recent messages (total: ${totalCount}, lastStatusCount: ${lastStatusCount})`);
-            
             // Show only new messages as feedback
             if (totalCount > lastStatusCount) {
                 const newMessages = messages.slice(Math.max(0, lastStatusCount - (totalCount - messages.length)));
-                console.log(`📨 Processing ${newMessages.length} new messages:`, newMessages);
                 newMessages.forEach(msg => {
                     const level = (msg.level || 'info').toString().toLowerCase();
                     const source = msg.source || msg.name || 'system';
@@ -858,10 +851,9 @@
                         feedbackType = 'warning';
                     }
                     
-                    console.log(`✉️ Processing message: ${messageText} [${feedbackType}]`);
-                    
                     // Check if this is an offset message
-                    const isOffsetMessage = /\boffset\s*=\s*[-\d.]+/i.test(text || '') && /\btest\s*=\s*[-\d.]+/i.test(text || '');
+                    // Parse message like: "offset value: 1.7 N, offset test: 4.3 N"
+                    const isOffsetMessage = /\boffset\s*value\s*:\s*([-\d.]+)\s*N/i.test(text || '') && /\boffset\s*test\s*:\s*([-\d.]+)\s*N/i.test(text || '');
                     if (isOffsetMessage) {
                         updateOffsetDisplay(text, msg.side || msg.topic);
                         // Don't show the message as feedback, only update the display
@@ -874,7 +866,7 @@
                                            text?.toLowerCase().includes('set_offset') ||
                                            text?.toLowerCase().includes('calibrat');
                     
-                    if (feedbackType === 'error' || feedbackType === 'warning') {
+                    if (feedbackType === 'error') {
                         // Check if conditions modal is open and this is a critical error
                         const isConditionsModalOpen = elements.conditionsModal.classList.contains('open');
                         const isCriticalError = (level === 'error' || level === 'critical' || level === 'fatal');
@@ -882,7 +874,6 @@
                         if (isConditionsModalOpen && isCriticalError) {
                             // Show error dialog instead of persistent message
                             showErrorDialog(messageText);
-                            console.log(`⚠️ Showed error dialog during condition selection`);
                             return;
                         }
                         
@@ -897,11 +888,9 @@
                             level: level,
                             text: text
                         });
-                        console.log(`✉️ Added persistent message to ${isOffsetRelated ? 'offset' : 'start/stop'} container`);
-                    } else {
+                    } else if (feedbackType === 'warning') {
                         // Transient message (auto-close)
                         showFeedback(messageText, feedbackType);
-                        console.log(`✉️ Showed auto-close feedback`);
                     }
                 });
             }
@@ -918,38 +907,35 @@
             if (!response.ok) return;
             const statusState = await response.json();
 
-            console.log(`📊 Received status state:`, statusState);
-
             // Update each component's status indicator and value
             if (statusState.coordinator) {
                 const {message, status: statusValue} = statusState.coordinator;
-                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                const sensorStatus = deriveIndicatorStatus(statusValue);
                 setServiceStatus('coordinator', sensorStatus, statusValue);
             }
 
             if (statusState.hdf5_writer) {
                 const {message, status: statusValue} = statusState.hdf5_writer;
-                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                const sensorStatus = deriveIndicatorStatus(statusValue);
                 setServiceStatus('hdf5_writer', sensorStatus, statusValue);
             }
 
             if (statusState.tip_loadcell_left) {
                 const {message, status: statusValue} = statusState.tip_loadcell_left;
-                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('left', sensorStatus, statusValue);
             }
 
             if (statusState.tip_loadcell_right) {
                 const {message, status: statusValue} = statusState.tip_loadcell_right;
-                const sensorStatus = deriveIndicatorStatus(message, statusValue);
+                const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('right', sensorStatus, statusValue);
             }
 
             if (statusState.eye_tracker) {
                 const {status: statusValue, source} = statusState.eye_tracker;
-                const isConnected = statusValue.toLowerCase() !== 'idle' && statusValue.toLowerCase() !== 'disconnected';
+                const isConnected = statusValue.toLowerCase() !== 'idle' && statusValue.toLowerCase() !== 'unreachable';
                 const isPupilNeon = (source || '').toString().toLowerCase().includes('pupil_neon');
-                console.log(`📊 Eye-tracker status: "${statusValue}" -> connected=${isConnected}`);
                 setEyetrackerStatus(isConnected ? 'connected' : 'disconnected', statusValue, { isPupilNeon });
             }
         } catch (error) {

@@ -127,12 +127,31 @@ public:
         _recording = false;
         std::cout << "Stopping recording"<< std::endl;
         
-
-      } else {
-        // unrecognized command, we don't know how to handle it, so we retry
-        return return_type::retry;
       } 
+        
+    }
 
+    if (topic == "coordinator") {
+      // if the input contains a field that must be recorded, we need to continue
+      // Otherwise we need to retry to avoid saving the default field (timecode, timestamp, hostname) 
+      bool field_to_record_found = false;
+
+      for (const auto &keypath : _converter.keypaths("coordinator")) {
+        
+        // skip default fields
+        if (keypath == "timecode" || keypath == "timestamp" || keypath == "hostname") {
+          continue; 
+        }
+
+        if (input.contains(keypath)) {
+          field_to_record_found = true;
+          break;;
+        } 
+      }
+
+      if (!field_to_record_found) {
+        return return_type::retry;
+      }
     }
 
     // Continue if it is not a command, if we are recording
