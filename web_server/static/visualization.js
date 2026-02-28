@@ -20,6 +20,10 @@
         acquisitionSelect: document.getElementById('acquisition-select'),
         showBtn: document.getElementById('show-btn'),
         feedback: document.getElementById('feedback'),
+        confirmDialog: document.getElementById('confirm-dialog'),
+        confirmDialogMessage: document.getElementById('confirm-dialog-message'),
+        confirmDialogCancel: document.getElementById('confirm-dialog-cancel'),
+        confirmDialogProceed: document.getElementById('confirm-dialog-proceed'),
         forceCanvas: document.getElementById('force-chart'),
         toggleChartBtn: document.getElementById('toggle-chart-btn'),
         chartContent: document.getElementById('chart-content'),
@@ -234,6 +238,33 @@
         }
     }
 
+    // Show confirmation dialog and return a promise
+    function showConfirmDialog(message) {
+        return new Promise((resolve) => {
+            elements.confirmDialogMessage.textContent = message;
+            elements.confirmDialog.style.display = 'flex';
+            
+            // Handle cancel
+            const handleCancel = () => {
+                elements.confirmDialog.style.display = 'none';
+                elements.confirmDialogCancel.removeEventListener('click', handleCancel);
+                elements.confirmDialogProceed.removeEventListener('click', handleProceed);
+                resolve(false);
+            };
+            
+            // Handle proceed
+            const handleProceed = () => {
+                elements.confirmDialog.style.display = 'none';
+                elements.confirmDialogCancel.removeEventListener('click', handleCancel);
+                elements.confirmDialogProceed.removeEventListener('click', handleProceed);
+                resolve(true);
+            };
+            
+            elements.confirmDialogCancel.addEventListener('click', handleCancel);
+            elements.confirmDialogProceed.addEventListener('click', handleProceed);
+        });
+    }
+
     // Load and display data for selected acquisition
     async function loadAcquisitionData() {
         const acquisitionId = elements.acquisitionSelect.value;
@@ -245,6 +276,24 @@
         
         try {
             showFeedback('Loading...', 'info');
+
+            // Step 1: Check file info first
+            const infoResponse = await fetch(`/acquisitions/${acquisitionId}/file-info`);
+            const fileInfo = await infoResponse.json();
+            
+            // Step 2: If large file, ask for confirmation using custom dialog
+            if (fileInfo.requires_confirmation) {
+                const confirmed = await showConfirmDialog(
+                    `The file is large (${fileInfo.file_size_mb} MB). ` +
+                    `Loading the chart may take time. Proceed?`
+                );
+                
+                if (!confirmed) {
+                    showFeedback('Loading cancelled', 'warning');
+                    return; // User cancelled
+                }
+            }
+            
             
             const response = await fetch(`${API_BASE}/acquisitions/${acquisitionId}`);
             

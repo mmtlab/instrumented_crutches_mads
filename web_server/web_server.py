@@ -282,58 +282,59 @@ def read_hdf5_data(file_path: Path):
         with h5py.File(file_path, 'r') as f:
             result = {}
             
-            # Check which datasets are available (new layout: /tip_loadcell/time.* and /tip_loadcell/force.*)
-            has_left = '/tip_loadcell/force.left' in f or '/loadcell/left' in f
-            has_right = '/tip_loadcell/force.right' in f or '/loadcell/right' in f
-            has_ts_left = '/tip_loadcell/time.left' in f or '/loadcell/ts_left' in f
-            has_ts_right = '/tip_loadcell/time.right' in f or '/loadcell/ts_right' in f
-            
-            if not has_left and not has_right:
-                raise HTTPException(status_code=500, detail="No loadcell data found in HDF5 file")
-            
-            start_time_ms = None
-            
-            # Read left crutch data and timestamps if available
-            if has_left and has_ts_left:
-                if '/tip_loadcell/force.left' in f and '/tip_loadcell/time.left' in f:
-                    left_data = f['/tip_loadcell/force.left'][:]
-                    ts_left_ms = f['/tip_loadcell/time.left'][:]  # milliseconds epoch
-                else:
-                    left_data = f['/loadcell/left'][:]
-                    ts_left_ms = f['/loadcell/ts_left'][:]  # milliseconds epoch
+            # Check for new unified format: /tip_loadcell/{force, side, timestamp}
+            if '/tip_loadcell/force' in f and '/tip_loadcell/side' in f and '/tip_loadcell/timestamp' in f:
+                # Read unified arrays
+                force_data = f['/tip_loadcell/force'][:]
+                side_data = f['/tip_loadcell/side'][:]
+                timestamp_data = f['/tip_loadcell/timestamp'][:]
                 
-                # Convert to seconds and make relative
-                if start_time_ms is None:
-                    start_time_ms = ts_left_ms[0]
-                ts_left_relative = [(ts - start_time_ms) / 1000.0 for ts in ts_left_ms]
+                # Decode side strings if they are bytes
+                if len(side_data) > 0 and isinstance(side_data[0], bytes):
+                    side_data = [s.decode('utf-8') for s in side_data]
                 
-                result["left"] = left_data.tolist()
-                result["ts_left"] = ts_left_relative
-            
-            # Read right crutch data and timestamps if available
-            if has_right and has_ts_right:
-                if '/tip_loadcell/force.right' in f and '/tip_loadcell/time.right' in f:
-                    right_data = f['/tip_loadcell/force.right'][:]
-                    ts_right_ms = f['/tip_loadcell/time.right'][:]  # milliseconds epoch
-                else:
-                    right_data = f['/loadcell/right'][:]
-                    ts_right_ms = f['/loadcell/ts_right'][:]  # milliseconds epoch
+                # Decode timestamp strings if they are bytes
+                if len(timestamp_data) > 0 and isinstance(timestamp_data[0], bytes):
+                    timestamp_data = [ts.decode('utf-8') for ts in timestamp_data]
                 
-                # Convert to seconds and make relative
-                if start_time_ms is None:
-                    start_time_ms = ts_right_ms[0]
-                ts_right_relative = [(ts - start_time_ms) / 1000.0 for ts in ts_right_ms]
+                # Parse timestamps to milliseconds epoch
+                ts_ms = []
+                for ts_str in timestamp_data:
+                    dt = date_parser.parse(ts_str)
+                    ts_ms.append(int(dt.timestamp() * 1000))
                 
-                result["right"] = right_data.tolist()
-                result["ts_right"] = ts_right_relative
-            
-            # Calculate total samples
-            total_samples = 0
-            if "left" in result:
-                total_samples += len(result["left"])
-            if "right" in result:
-                total_samples += len(result["right"])
-            result["samples"] = total_samples
+                # Find start time for relative calculation
+                start_time_ms = ts_ms[0] if ts_ms else 0
+                
+                # Separate data by side
+                left_force = []
+                left_ts_relative = []
+                right_force = []
+                right_ts_relative = []
+                
+                for i in range(len(force_data)):
+                    side = side_data[i].lower() if isinstance(side_data[i], str) else str(side_data[i]).lower()
+                    ts_relative = (ts_ms[i] - start_time_ms) / 1000.0
+                    
+                    if side == 'left':
+                        left_force.append(float(force_data[i]))
+                        left_ts_relative.append(ts_relative)
+                    elif side == 'right':
+                        right_force.append(float(force_data[i]))
+                        right_ts_relative.append(ts_relative)
+                
+                # Add to result
+                if left_force:
+                    result["left"] = left_force
+                    result["ts_left"] = left_ts_relative
+                
+                if right_force:
+                    result["right"] = right_force
+                    result["ts_right"] = right_ts_relative
+                
+                # Calculate total samples
+                total_samples = len(left_force) + len(right_force)
+                result["samples"] = total_samples
             
             return result
     except Exception as e:
@@ -811,6 +812,45 @@ async def get_last_test_config():
         "test_config": test_config,
         "acquisition_id": last_acq.get("id"),
         "start_time": last_acq.get("start_time")
+    }
+
+
+@app.get("/acquisitions/{acquisition_id}/file-info")
+async def get_acquisition_file_info(acquisition_id: str):
+    """Get file information including size before loading data for plotting.
+    
+    Returns metadata about the HDF5 file to help frontend decide if confirmation
+    is needed before loading large files (> 2MB).
+    """
+    if acquisition_id not in acquisitions:
+        raise HTTPException(status_code=404, detail=f"Acquisition {acquisition_id} not found")
+    
+    acq = acquisitions[acquisition_id]
+    path = data_file_path(acquisition_id)
+    
+    if not path.exists():
+        return {
+            "acquisition_id": acquisition_id,
+            "file_exists": False,
+            "message": "Data file not found"
+        }
+    
+    # Get file size
+    file_size_bytes = path.stat().st_size
+    file_size_mb = file_size_bytes / (1024 * 1024)
+    
+    # Determine if confirmation is recommended (> 2MB)
+    requires_confirmation = file_size_mb > 2.0
+    
+    return {
+        "acquisition_id": acquisition_id,
+        "file_exists": True,
+        "file_size_bytes": file_size_bytes,
+        "file_size_mb": round(file_size_mb, 2),
+        "requires_confirmation": requires_confirmation,
+        "samples": acq.get("samples", 0),
+        "status": acq.get("status", "completed"),
+        "message": "File is large, loading may take time. Proceed?" if requires_confirmation else "File ready to load"
     }
 
 

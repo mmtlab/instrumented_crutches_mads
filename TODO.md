@@ -69,6 +69,5 @@ Da dire a Paolo
 
 
 NEXT:
-- aggiornare i grafici con la nuova configurazione del file h5
 - caricare i nuovi agenti sulla raspi e compilare
 - aggiornare i service per farli partire tutti insieme semplicemente (forse è già così). Controllare quello di hdf5_writer che è passato da Sink a Filter
