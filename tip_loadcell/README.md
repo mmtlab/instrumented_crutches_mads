@@ -4,15 +4,14 @@ This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS).
 
 <provide here some introductory info>
 
-*Required MADS version: 1.4.0.*
+*Required MADS version: 2.0.0.*
 
 
 ## Supported platforms
 
 Currently, the supported platforms are:
 
-* **Linux** 
-* **MacOS**
+* **Debian** 
 * **Windows**
 
 
@@ -42,12 +41,13 @@ The plugin supports the following settings in the INI file:
 # execution command example:
 # mads-filter tip_loadcell.plugin -o side=left --dont-block
 [tip_loadcell]
-sub_topic = ["controller"]
+sub_topic = ["coordinator"]
 pub_topic = "tip_loadcell"
 datapin = 6
 clockpin = 26
 period = 10
 side = "unknown" # used to select scaling factor
+health_status_period = 500 # ms
 
 [tip_loadcell.scaling]
 left = 1.0 # debug value

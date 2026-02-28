@@ -11,14 +11,13 @@ This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS).
 
 Currently, the supported platforms are:
 
-* **Linux** 
-* **MacOS**
+* **Debian**
 * **Windows**
 
 
 ## Installation
 
-Linux and MacOS:
+Debian:
 
 ```bash
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
@@ -39,17 +38,16 @@ cmake --build build --config Release -t install
 The plugin supports the following settings in the INI file:
 
 ```ini
-[error_handler]
-# Describe the settings available to the plugin
+# execution command example:
+# mads-filter status_handler.plugin
+[status_handler] 
+sub_topic = ["agent_event", "coordinator", "hdf5_writer", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"] # add other relevant topics to monitor (startup events, error events and shutdown events from all agents are automatically published to "agent_event" topic)
+pub_topic = "status"
+unreachable_agent_timeout = 3000 # ms
+debug = true
 ```
 
 All settings are optional; if omitted, the default values are used.
 
-
-
-
-## Executable demo
-
-<Explain what happens if the test executable is run>
 
 ---

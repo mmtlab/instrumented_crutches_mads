@@ -68,17 +68,20 @@ cmake --build build --config Release -t install
 The plugin supports the following settings in the INI file:
 
 ```ini
+# --------------------------------
+# HDF5 Loggers
+# --------------------------------
+
 # execution command examples:
 # mads-sink hdf5_writer.plugin 
+# NB: if you add more than one keypath for the "coordinator" topic, it is not guaranteed that the fields have the same size (it depends if the "A" field is always present when the "B" field is present, etc)
 [hdf5_writer]
-sub_topic = ["command", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"]
+sub_topic = ["coordinator", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"]
 pub_topic = "hdf5_writer"
-folder_path = "../web_server/data"
+folder_path = "C:/mirrorworld/instrumented_crutches/web_server/data" # provide absolute path to avoid issues with relative paths and changing working directories
 keypath_sep = "."
-keypaths = {"tip_loadcell" = ["force.right", "force.left"],
-            "handle_loadcell" = ["force.right", "force.left"], 
-            "imu" = ["ax.right", "ay.right", "az.right", "ax.left", "ay.left", "az.left", "gx.right", "gy.right", "gz.right", "gx.left", "gy.left", "gz.left", "mx.right", "my.right", "mz.right", "mx.left", "my.left", "mz.left"],
-            "pupil_neon" = ["recording_id", "time_offset_ms_mean", "time_offset_ms_std", "time_offset_ms_median", "roundtrip_duration_ms_mean", "roundtrip_duration_ms_std", "roundtrip_duration_ms_median"]}
+keypaths = {"coordinator" = ["label"], "tip_loadcell" = ["side", "force"], "handle_loadcell" = ["side", "force"], "imu" = ["side", "ax", "ay", "az", "gx", "gy", "gz", "mx", "my", "mz"], "pupil_neon" = ["time_offset_ms_mean", "time_offset_ms_std", "time_offset_ms_median", "roundtrip_duration_ms_mean", "roundtrip_duration_ms_std", "roundtrip_duration_ms_median"]}
+health_status_period = 500 # ms
 ```
 
 The keypaths `timecode` and `timestamp` are always added to the list of keypaths, even if not specified in the INI file. Since `timecode` and `timestamp` are always logged, make sure that if you publish a message for one crutch, you also fill the other crutch's field with a NaN. This ensures that every row in the timestamp dataset has a corresponding row in the force dataset.
