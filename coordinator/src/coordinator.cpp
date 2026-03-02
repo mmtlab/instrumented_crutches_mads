@@ -40,7 +40,7 @@ public:
   string kind() override { return PLUGIN_NAME; }
 
   // Implement the actual functionality here
-  return_type load_data(json const &input, string topic = "") override {
+  return_type load_data(json const &input, string topic = "", vector<unsigned char> const *blob = nullptr) override {
     
     // if topic contains "command", process commands here
     if (input.contains("command")) {
@@ -110,7 +110,7 @@ public:
 
   // We calculate the average of the last N values for each key and store it
   // into the output json object
-  return_type process(json &out) override {
+  return_type process(json &out, vector<unsigned char> *blob = nullptr) override {
     out.clear();
 
     // Send periodic agent_status if no command to send and 500ms have passed
@@ -163,7 +163,7 @@ public:
       // if there is no command to send and not enough time has passed, don't send anything
       return return_type::retry;
     }
-
+    
     // This sets the agent_id field in the output json object, only when it is
     // not empty
     if (!_agent_id.empty()) out["agent_id"] = _agent_id;

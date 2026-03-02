@@ -56,7 +56,7 @@ public:
   // return_type::warning: content of _error is tracked with register_event
   // return_type::error: _error is traced, skip process
   // return_type::critical: execution stops
-  return_type load_data(json const &input, string topic = "") override {
+  return_type load_data(json const &input, string topic = "", vector<unsigned char> const *blob = nullptr) override {
     
     // if su_topic contains "command" field, process commands here
     if(input.contains("command")) {
@@ -68,12 +68,14 @@ public:
         // firstly check if we are already recording, if yes, return a warning and do not start a new recording, to avoid overwriting the existing file or creating multiple files at the same time, which can lead to data loss or corruption
         if (_recording) {
           _error = "recording: start requested while already recording";
+          cout << _error << std::endl;
           return return_type::error;
         }
 
         // check if the command contains an "id" field, which is required to create a new file for recording, if not, return an error
         if (!input.contains("id")) {
           _error = "idle: start command requires an id";
+          cout << _error << std::endl;
           return return_type::error;
         }
         int id = input.value("id", -1); // get the id value, default to -1 if not found
@@ -87,6 +89,7 @@ public:
         if (new_filename == _filename) {
           _filename = "not_handled_filename.h5"; // reset filename to avoid overwriting in case of new recording without restart
           _error = "idle: filename collision detected for id: " + to_string(id);
+          cout << _error << std::endl;
           return return_type::error;
         } else {
           _filename = new_filename;
@@ -96,6 +99,7 @@ public:
           _converter.open(_folder_path + _filename);
         } catch (const std::exception &e) {
           _error = "idle: error opening HDF5 file: " + string(e.what());
+          cout << _error << std::endl;
           return return_type::error;
         }
         _recording = true;
@@ -107,6 +111,7 @@ public:
         // check if we are currently recording, if not, return a warning, to avoid potential issues with trying to close a file that is not open, which can lead to errors or crashes
         if (_recording == false) {
           _error = "idle: stop requested while not recording";
+          cout << _error << std::endl;
           return return_type::error;
         }
 
@@ -114,6 +119,7 @@ public:
           _converter.close(); // Close the current file
         } catch (const H5::Exception &e) {
           _error = "recording: closing HDF5 file: " + string(e.getDetailMsg());
+          cout << _error << std::endl;
           return return_type::error;
         }
 
@@ -121,6 +127,7 @@ public:
         string new_filename = _filename.substr(1, _filename.size() - 1); // remove leading underscore
         if (std::rename((_folder_path + _filename).c_str(), (_folder_path + new_filename).c_str()) != 0) {
           _error = "recording: error renaming file " + _filename + " to " + new_filename;
+          cout << _error << std::endl;
           return return_type::error;
         }
 
@@ -160,6 +167,7 @@ public:
       // check if the topic is in the keypaths, if not, return an error, to avoid potential issues
       if (std::find(_converter.groups().begin(), _converter.groups().end(), topic) == _converter.groups().end()) {
         _error = "recording: topic '" + topic + "' not found in keypaths.";
+        cout << _error << std::endl;
         return return_type::error;
       }
 
@@ -168,6 +176,7 @@ public:
         _converter.save_to_group(input, topic);
       } catch (const std::exception &e) {
         _error = "recording: error converting JSON to HDF5: " + string(e.what());
+        cout << _error << std::endl;
         return return_type::error;
       }
     }
@@ -183,7 +192,7 @@ public:
   // return_type::warning: content of _error is added to result befor publishing
   // return_type::error: _error is traced via register_event, don't publish
   // return_type::critical: execution stops
-  return_type process(json &out) override {
+  return_type process(json &out, vector<unsigned char> *blob = nullptr) override {
     out.clear();
 
     // Send periodic agent_status if 500ms have passed
@@ -193,7 +202,7 @@ public:
     if (elapsed >= _health_status_period) {
       out["agent_status"] = _recording ? "recording" : "idle";
       _last_health_status_time = now;
-    }
+    } 
     
     // This sets the agent_id field in the output json object, only when it is
     // not empty

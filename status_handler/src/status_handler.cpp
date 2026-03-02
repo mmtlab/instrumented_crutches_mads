@@ -92,8 +92,9 @@ public:
   }
 
   // Implement the actual functionality here
-  return_type load_data(json const &input, string topic = "") override {
-
+  return_type load_data(json const &input, string topic = "", vector<unsigned char> const *blob = nullptr) override {
+    
+    // If the topic is agent_event, we want to set the source as the name of the agent if available, otherwise we keep the topic as source
     // if the topic is empty, we cannot determine the source of the message, so we retry 
     if (topic.empty()) {
       return return_type::retry;
@@ -106,6 +107,7 @@ public:
     string message = "";
     string side = "";
     bool has_status = false;
+
 
     if (topic == "agent_event") {
 
@@ -179,7 +181,7 @@ public:
         return return_type::retry;
       }
 
-    } else { // All the topics different from agent_event if it contains agent_status
+    } else { // All the topics different from agent_event if it contains status
       
       // Handle health info messages 
       if (input.contains("agent_status")) {
@@ -199,7 +201,7 @@ public:
           status = input["agent_status"].get<string>();
           level = "info";
 
-          // Check if is info, warning, error or critical based on the agent_status value, to set the level accordingly
+          // Check if is info, warning, error or critical based on the status value, to set the level accordingly
           if (input.contains("info")) {
 
             cout << "Received info message: " << input["info"].dump() << endl;
@@ -246,7 +248,7 @@ public:
         }
 
       } else {
-        // if the message doesn't contain agent_status, we don't know how to handle it, so we retry
+        // if the message doesn't contain status, we don't know how to handle it, so we retry
         return return_type::retry;
       }
     }
@@ -315,7 +317,7 @@ public:
 
   // We calculate the average of the last N values for each key and store it
   // into the output json object
-  return_type process(json &out) override {
+  return_type process(json &out, vector<unsigned char> *blob = nullptr) override {
     out.clear();
 
     if (_send_agents_status) {

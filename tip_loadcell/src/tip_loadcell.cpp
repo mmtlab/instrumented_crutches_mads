@@ -59,7 +59,7 @@ public:
   string kind() override { return PLUGIN_NAME; }
 
   // Implement the actual functionality here
-  return_type load_data(json const &input, string topic = "") override {
+  return_type load_data(json const &input, string topic = "", vector<unsigned char> const *blob = nullptr) override {
     
     // if topic contains the "command" field, process commands here
     if (input.contains("command")) {
@@ -101,7 +101,7 @@ public:
 
   // We calculate the average of the last N values for each key and store it
   // into the output json object
-  return_type process(json &out) override {
+  return_type process(json &out, vector<unsigned char> *blob = nullptr) override {
     out.clear();
 
     // Not valid states or transitions are handled in load_data, here we just process data

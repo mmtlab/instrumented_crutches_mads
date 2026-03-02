@@ -263,7 +263,7 @@ def send_mads_command(command: str, acq_id: str = None):
         # Publish message to ws_command topic
         topic = "ws_command"
         print(f"📤 Publishing to '{topic}': {payload_dict}", file=sys.stderr)
-        mads_agent.publish(topic, payload_dict)
+        mads_agent.publish(payload_dict, topic)
         print(f"✅ Successfully published: {payload_dict}", file=sys.stderr)
         return True, "ok"
     except Exception as exc:
@@ -454,7 +454,7 @@ async def start_acquisition(test_config: dict = None):
         if session_id is not None:
             start_payload["session_id"] = session_id
         
-        mads_agent.publish(topic, start_payload)
+        mads_agent.publish(start_payload, topic)
     except Exception as exc:
         return {
             "status": "error",
@@ -495,7 +495,7 @@ async def start_acquisition(test_config: dict = None):
     if condition_id and mads_agent:
         try:
             topic = "ws_command"
-            mads_agent.publish(topic, {"command": "condition", "label": condition_id})
+            mads_agent.publish({"command": "condition", "label": condition_id}, topic)
         except Exception as exc:
             # Log but don't fail the start if condition publish fails
             print(f"Warning: Failed to publish condition command: {exc}", file=sys.stderr)
@@ -689,7 +689,7 @@ async def save_condition(condition_data: dict):
         if mads_agent:
             try:
                 topic = "ws_command"
-                mads_agent.publish(topic, {"command": "condition", "label": condition_id})
+                mads_agent.publish({"command": "condition", "label": condition_id}, topic)
             except Exception as exc:
                 return {
                     "status": "error",
@@ -730,7 +730,7 @@ async def eyetracker_command(command_data: dict):
     try:
         payload_dict = {"command": command}
         topic = "ws_command"
-        mads_agent.publish(topic, payload_dict)
+        mads_agent.publish(payload_dict, topic)
         return {
             "status": "success",
             "message": f"Command {command} sent"

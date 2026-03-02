@@ -40,6 +40,7 @@ class PupilNeonAgent:
     
         self.agent.set_receive_timeout(200)
 
+        self.pub_topic = self.agent.settings().get("pub_topic", "pupil_neon")
         self.health_status_period = self.agent.settings().get("health_status_period", 500) # ms
         self._last_health_status_time = time.time()
         print(f"Health status will be published every {self.health_status_period} ms")
@@ -63,6 +64,7 @@ class PupilNeonAgent:
 
     def publish_agent_status(self, error: str or None):
         """Publish agent status to pupil_neon topic."""
+        # always add the plugin name as fallback, in case the coordinator relies on it to identify the source of the message
         payload = {
             'agent_status': self.agent_status.name.lower()
         }
@@ -70,7 +72,7 @@ class PupilNeonAgent:
             payload['error'] = error
         try:
             #print(f"Publishing agent status: {payload}")
-            self.agent.publish('pupil_neon', payload)
+            self.agent.publish(payload, self.pub_topic)
         except Exception:
             pass
 
@@ -203,7 +205,7 @@ class PupilNeonAgent:
         }
         try:
             print(f"Publishing stats: {payload}")
-            self.agent.publish('pupil_neon', payload)
+            self.agent.publish(payload, self.pub_topic)
         except Exception:
             pass
 
