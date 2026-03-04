@@ -24,7 +24,6 @@
 // other includes as needed here
 #include <memory> // For std::unique_ptr
 
-
 #ifdef RASPBERRYPI_PLATFORM
   // Include HX711 for Raspberry Pi
   #include <hx711/common.h>  // Library for HX711
@@ -52,7 +51,9 @@ public:
 
 #ifdef RASPBERRYPI_PLATFORM
   // Constructor
-  Tip_loadcellPlugin() : _hx(nullptr) {}
+  Tip_loadcellPlugin() : _hx(nullptr) {
+    std::cout << "[tip_loadcell] ctor: _hx=" << (_hx ? "valid" : "null") << std::endl;
+  }
 #endif
 
   // Typically, no need to change this
@@ -110,6 +111,19 @@ public:
     // Send periodic agent_status if 500ms have passed
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_health_status_time).count();
+    
+    if (_process_cycles <= 1000000000) {
+      ++_process_cycles;
+    } else {
+      _process_cycles = 0;
+    }
+
+    /*std::cout << "[tip_loadcell] process cycle=" << _process_cycles
+          << " recording=" << (_recording ? "true" : "false")
+          << " setting_offset=" << (_setting_offset ? "true" : "false")
+          << " elapsed_ms=" << elapsed
+          << " _hx=" << (_hx ? "valid" : "null")
+          << std::endl;*/
   
     // load the data as necessary and set the fields of the json out variable
     if (_recording || _setting_offset || elapsed >= _health_status_period) {
@@ -121,20 +135,12 @@ public:
 
       if (_recording){
         #ifdef RASPBERRYPI_PLATFORM
-        
-          try {
-            if (_hx) {
 
-              // read the load cell value, subtract the offset and store it in the output json object
-              float loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
-              out["force"] = loadCellValue - _offset;
-
-            }
-          } catch (const std::exception &e) {
-            out["agent_status"] = "recording";
-            out["error"] = "Error reading from HX711: " + string(e.what());
-            cout << out["error"] << std::endl;
-          }
+          // read the load cell value, subtract the offset and store it in the output json object
+          float loadCellValue = _hx->weight(1).getValue(Mass::Unit::N);
+          //float loadCellValue = 2400.0;
+          auto sample = loadCellValue - _offset;
+          out["force"] = sample;
 
         #else
 
@@ -146,27 +152,21 @@ public:
       } else if (_setting_offset) {
         #ifdef RASPBERRYPI_PLATFORM
         
-          try {
-            // Real hardware offset on Raspberry Pi
-            float loadCellValue = _hx->weight(40).getValue(Mass::Unit::N);
-            _offset = loadCellValue;
-            _setting_offset = false;
+          // Real hardware offset on Raspberry Pi
+          float loadCellValue = _hx->weight(40).getValue(Mass::Unit::N);
+          //float loadCellValue = 2400.0;
+          _offset = loadCellValue;
+          _setting_offset = false;
 
-            // test read after setting offset
-            loadCellValue = _hx->weight(20).getValue(Mass::Unit::N);
-            auto offset_test = loadCellValue - _offset;
-            
-            // Store the offset and the test read in the output json for user feedback
-            // We only fill the field for the current side
-            out["info"]["offset"]["value"] = _offset;
-            out["info"]["offset"]["test"] = offset_test;
-            out["agent_status"] = "idle";
-
-          } catch (const std::exception &e) {
-            out["agent_status"] = "idle";
-            out["error"] = "Error reading from HX711 for offset: " + string(e.what());
-            cout << out["error"] << std::endl;
-          }
+          // test read after setting offset
+          loadCellValue = _hx->weight(20).getValue(Mass::Unit::N);
+          auto offset_test = loadCellValue - _offset;
+          
+          // Store the offset and the test read in the output json for user feedback
+          // We only fill the field for the current side
+          out["info"]["offset"]["value"] = _offset;
+          out["info"]["offset"]["test"] = offset_test;
+          out["agent_status"] = "idle";
 
         #else
           // If we are not on a Raspberry Pi, we emulate the offset setting by generating a random offset value, which can be useful for development and testing on non-Raspberry Pi machines
@@ -181,7 +181,9 @@ public:
           out["agent_status"] = "idle";
 
         #endif
+
       }
+
     } else {
       // if there is no command to send and not enough time has passed, don't send anything
       return return_type::retry;
@@ -265,19 +267,19 @@ public:
 
 private:
 
-  #ifdef RASPBERRYPI_PLATFORM
-    // Define the fields that are used to store internal resources
-    unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor
-  #else
-    // If we are not on a Raspberry Pi, we don't have the actual sensor
-  #endif 
-
+#ifdef RASPBERRYPI_PLATFORM
+  // Define the fields that are used to store internal resources
+  unique_ptr<AdvancedHX711> _hx;  // Single HX711 sensor
+#else
+  // If we are not on a Raspberry Pi, we don't have the actual sensor
+#endif 
   // Control flags
   bool _recording = false;
   bool _setting_offset = false;
 
   int _health_status_period = 500; // in milliseconds, default to 500 ms
   std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
+  unsigned long long _process_cycles = 0; // I dont know way, but without this counter the agent blocks after one process cycle
 
   // Internal variables
   string _side = "unknown";
