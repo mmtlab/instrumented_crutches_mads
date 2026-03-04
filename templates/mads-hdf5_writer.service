@@ -1,0 +1,28 @@
+#  __  __    _    ____  ____  
+# |  \/  |  / \  |  _ \/ ___| 
+# | |\/| | / _ \ | | | \___ \ 
+# | |  | |/ ___ \| |_| |___) |
+# |_|  |_/_/   \_\____/|____/ 
+#
+# Linux Systemd service file for mads-hdf5_writer, a mads-sink agent
+# Notice that the settings file will be read from 
+# /usr/local/etc/mads.ini
+#
+# Save this file to /etc/systemd/system/mads-hdf5_writer.service
+# Or run "sudo mads service hdf5_writer sink -s tcp://10.42.0.1:9092 hdf5_writer.plugin " 
+# then run "sudo systemctl enable mads-hdf5_writer.service"
+
+[Unit]
+Description=mads-hdf5_writer
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=/usr/local/bin/mads-filter -s tcp://10.42.0.1:9092 hdf5_writer.plugin -b
+
+[Install]
+WantedBy=multi-user.target

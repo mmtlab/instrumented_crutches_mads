@@ -1,8 +1,6 @@
 # error_handler plugin for MADS
 
-This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS). 
-
-<provide here some introductory info>
+This is a Filter plugin for [MADS](https://github.com/pbosetti/MADS). 
 
 *Required MADS version: 2.0.0.*
 
@@ -12,7 +10,7 @@ This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS).
 Currently, the supported platforms are:
 
 * **Debian**
-* **Windows**
+* **Windows (debug)**
 
 
 ## Installation
@@ -25,7 +23,7 @@ cmake --build build
 sudo cmake --install build
 ```
 
-Windows:
+Windows (debug):
 
 ```powershell
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
@@ -39,15 +37,13 @@ The plugin supports the following settings in the INI file:
 
 ```ini
 # execution command example:
-# mads-filter status_handler.plugin
+# mads-filter status_handler
 [status_handler] 
 sub_topic = ["agent_event", "coordinator", "hdf5_writer", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"] # add other relevant topics to monitor (startup events, error events and shutdown events from all agents are automatically published to "agent_event" topic)
 pub_topic = "status"
 unreachable_agent_timeout = 3000 # ms
-debug = true
+debug = false
+
 ```
-
-All settings are optional; if omitted, the default values are used.
-
 
 ---

@@ -1,6 +1,6 @@
 # hdf5 plugin for MADS
 
-This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS). 
+This is a Filter plugin for [MADS](https://github.com/pbosetti/MADS). 
 
 This plugin saves the incoming data into a [HDF5](https://www.hdfgroup.org/solutions/hdf5/) file. It is designed to work with the MADS framework, allowing users to store data in a structured format that is efficient for both storage and retrieval.
 
@@ -73,12 +73,12 @@ The plugin supports the following settings in the INI file:
 # --------------------------------
 
 # execution command examples:
-# mads-sink hdf5_writer.plugin 
-# NB: if you add more than one keypath for the "coordinator" topic, it is not guaranteed that the fields have the same size (it depends if the "A" field is always present when the "B" field is present, etc)
+# mads-sink hdf5_writer -b 
+# Note: if you add more than one keypath for the "coordinator" topic, it is not guaranteed that the fields have the same size (it depends if the "A" field is always present when the "B" field is present, etc)
 [hdf5_writer]
 sub_topic = ["coordinator", "tip_loadcell", "handle_loadcell", "imu", "pupil_neon"]
 pub_topic = "hdf5_writer"
-folder_path = "C:/mirrorworld/instrumented_crutches/web_server/data" # provide absolute path to avoid issues with relative paths and changing working directories
+folder_path = "~/instrumented_crutches_mads/web_server/data" # adapt the path to your installation
 keypath_sep = "."
 keypaths = {"coordinator" = ["label"], "tip_loadcell" = ["side", "force"], "handle_loadcell" = ["side", "force"], "imu" = ["side", "ax", "ay", "az", "gx", "gy", "gz", "mx", "my", "mz"], "pupil_neon" = ["time_offset_ms_mean", "time_offset_ms_std", "time_offset_ms_median", "roundtrip_duration_ms_mean", "roundtrip_duration_ms_std", "roundtrip_duration_ms_median"]}
 health_status_period = 500 # ms
@@ -86,7 +86,8 @@ health_status_period = 500 # ms
 
 The keypaths `timecode` and `timestamp` are always added to the list of keypaths, even if not specified in the INI file. Since `timecode` and `timestamp` are always logged, make sure that if you publish a message for one crutch, you also fill the other crutch's field with a NaN. This ensures that every row in the timestamp dataset has a corresponding row in the force dataset.
 
-
+**Note**: This agent must run in non-blocking mode. Use the `-b` or `--dont-block` argument when running it.
+**Note**: if you add more than one keypath for the "coordinator" topic, it is not guaranteed that the fields have the same size (it depends if the "A" field is always present when the "B" field is present, etc)
 
 # HDF5 Tools
 

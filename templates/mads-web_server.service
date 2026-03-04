@@ -1,0 +1,15 @@
+[Unit]
+Description=Instrumented Crutches Web Interface
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/crutch/instrumented_crutches_mads/web_server
+ExecStart=/home/crutch/instrumented_crutches_mads/web_server/venv/bin/python web_server.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

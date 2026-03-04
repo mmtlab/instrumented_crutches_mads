@@ -1,8 +1,6 @@
-# controller plugin for MADS
+# coordinator plugin for MADS
 
-This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS). 
-
-<provide here some introductory info>
+This is a Filter plugin for [MADS](https://github.com/pbosetti/MADS). 
 
 *Required MADS version: 2.0.0.*
 
@@ -12,7 +10,7 @@ This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS).
 Currently, the supported platforms are:
 
 * **Debian** 
-* **Windows**
+* **Windows (debug only)**
 
 
 ## Installation
@@ -25,13 +23,12 @@ cmake --build build
 sudo cmake --install build
 ```
 
-Windows:
+Windows (debug only):
 
 ```powershell
 cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
 cmake --build build --config Release -t install
 ```
-
 
 ## INI settings
 
@@ -39,7 +36,7 @@ The plugin supports the following settings in the INI file:
 
 ```ini
 # execution command example:
-# mads-filter coordinator.plugin
+# mads-filter coordinator -b
 [coordinator]
 sub_topic = ["ws_command"]
 pub_topic = "coordinator"
@@ -47,6 +44,6 @@ period = 10
 health_status_period = 500 # ms
 ```
 
-All settings are optional; if omitted, the default values are used.
+**Note**: This agent must run in non-blocking mode. Use the `-b` or `--dont-block` argument when running it.
 
 ---

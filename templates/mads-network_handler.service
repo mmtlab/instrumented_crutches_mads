@@ -1,0 +1,15 @@
+[Unit]
+Description=mads-network_handler
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=root
+ExecStartPre=/bin/sleep 5
+ExecStart=nmcli connection up Hotspot
+RemainAfterExit=yes 
+
+[Install]
+WantedBy=multi-user.target
