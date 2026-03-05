@@ -6,7 +6,7 @@ This repository contains an instrumented crutches system built on top of [MADS](
 
 This project implements MADS plugins for collecting and processing data from instrumented crutches, including tip load cells, eye tracking, and coordination between multiple sensors. For more information about MADS, visit the [official documentation](https://mads-net.github.io/).
 
-*Required MADS version: 2.0.0.*
+*Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 ## Installation
 

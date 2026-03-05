@@ -33,7 +33,7 @@ The keypath separator is `.` by default, but it can be changed in the INI file (
 
 An health status message is published if requested, when receiving a "health_status" command in the "command" input. 
 
-*Required MADS version: 2.0.0.*
+*Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 
 ## Supported platforms

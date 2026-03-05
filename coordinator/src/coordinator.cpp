@@ -19,6 +19,13 @@
 
 // other includes as needed here
 #include <chrono>
+#include <cstdlib>
+
+#ifdef RASPBERRYPI_PLATFORM
+  #pragma message("This computer has the HX711 library installed.")
+#else
+  #pragma message("This computer does not have the HX711 library available, sensor readings will be emulated with random values.")
+#endif 
 
 // Define the name of the plugin
 #ifndef PLUGIN_NAME
@@ -93,6 +100,45 @@ public:
 
           std::cout << "Sending command " << action << " with label " << _label_to_send << std::endl;
         }
+      } else if (action == "datetime_update") {
+        #ifdef RASPBERRYPI_PLATFORM
+          if (input.contains("datetime_to_set")) {
+            
+            if (_recording) {
+              _error = "recording: datetime_update requested while already acquiring";
+              return return_type::error;
+            }
+
+            // Get the datetime string from input
+            string datetime_to_set = input.value("datetime_to_set", "");
+            
+            if (datetime_to_set.empty()) {
+              _error = "idle: datetime_update requires a valid datetime_to_set value";
+              return return_type::error;
+            }
+
+            // Construct and execute the system command
+            string command = "sudo date -s \"" + datetime_to_set + "\"";
+            std::cout << "Executing: " << command << std::endl;
+            
+            int result = std::system(command.c_str());
+            
+            if (result == 0) {
+              std::cout << "Successfully updated system datetime to " << datetime_to_set << std::endl;
+            } else {
+              std::cout << "Failed to update system datetime (exit code: " << result << ")" << std::endl;
+              _error = "Failed to execute datetime update command";
+              return return_type::error;
+            }
+          } else {
+            _error = "idle: datetime_update requires datetime_to_set field";
+            return return_type::error;
+          }
+        #else
+          std::cout << "datetime_update command received, but datetime update is only supported on Raspberry Pi. Command ignored." << std::endl;
+          return return_type::retry;
+        #endif
+        
       } else if (action == "get_agents_status" || action == "set_offset" || action == "pupil_neon_connect" || action == "pupil_neon_disconnect") {
         // add here other commands that doesn't require additional fields or check for them as needed
         _send_command = true;

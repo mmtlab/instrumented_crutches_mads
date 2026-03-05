@@ -4,7 +4,7 @@ This is a Filter plugin for [MADS](https://github.com/pbosetti/MADS).
 
 <provide here some introductory info>
 
-*Required MADS version: 2.0.0.*
+*Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 
 ## Supported platforms
@@ -16,6 +16,20 @@ Currently, the supported platforms are:
 
 
 ## Installation
+
+Install the HX711's library ([HX711](https://github.com/mrcghidelli/hx711.git))
+
+```bash
+sudo apt-get install -y liblgpio-dev
+
+git clone https://github.com/mrcghidelli/hx711.git
+cd hx711
+
+make && sudo make install
+```
+You may need to run ldconfig at this point if you attempt to compile a program and libhx711 is not found.
+
+Then install the MADS agent.
 
 Raspberry:
 

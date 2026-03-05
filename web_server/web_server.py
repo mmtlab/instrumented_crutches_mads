@@ -242,7 +242,7 @@ def data_file_path(acq_id: str) -> Path:
     return DATA_DIR / f"{acq_id}.h5"
 
 
-def send_mads_command(command: str, acq_id: str = None):
+def send_mads_command(command: str, acq_id: str = None, extra_params: dict = None):
     """Send command via MADS agent to ws_command topic"""
     global mads_agent
     
@@ -259,6 +259,10 @@ def send_mads_command(command: str, acq_id: str = None):
         except (IndexError, ValueError):
             payload_dict["id"] = acq_id
     
+    # Add extra parameters if provided
+    if extra_params:
+        payload_dict.update(extra_params)
+    
     try:
         # Publish message to ws_command topic
         topic = "ws_command"
@@ -271,9 +275,9 @@ def send_mads_command(command: str, acq_id: str = None):
         return False, str(exc)
 
 
-async def send_mads_command_async(command: str, acq_id: str = None):
+async def send_mads_command_async(command: str, acq_id: str = None, extra_params: dict = None):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, send_mads_command, command, acq_id)
+    return await loop.run_in_executor(None, lambda: send_mads_command(command, acq_id, extra_params))
 
 
 def read_hdf5_data(file_path: Path):
@@ -565,9 +569,25 @@ async def set_offset():
         }
     
 @app.post("/health_status")
-async def health_status():
-    """Send health_status command via mads."""
+async def health_status(request_data: dict = None):
+    """Send health_status command via mads. If client datetime is provided, sync Raspberry Pi datetime first."""
     try:
+        # If client datetime is provided, send datetime_update command first
+        if request_data and "client_datetime" in request_data:
+            client_datetime = request_data.get("client_datetime", "").strip()
+            if client_datetime:
+                # Send datetime_update command with the client's current datetime
+                success, mads_output = await send_mads_command_async(
+                    "datetime_update", 
+                    extra_params={"datetime_to_set": client_datetime}
+                )
+                if not success:
+                    print(f"⚠️ Failed to sync datetime: {mads_output}", file=sys.stderr)
+                    # Continue anyway to send health status
+                else:
+                    print(f"✅ Datetime synced to: {client_datetime}", file=sys.stderr)
+        
+        # Send get_agents_status command
         success, mads_output = await send_mads_command_async("get_agents_status")
         if not success:
             return {

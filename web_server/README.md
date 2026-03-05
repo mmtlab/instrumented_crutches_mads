@@ -2,7 +2,7 @@
 
 This is a Python agent for [MADS](https://github.com/pbosetti/MADS). 
 
-*Required MADS version: 2.0.0.*
+*Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 FastAPI-based web interface for instrumented crutches data acquisition and visualization system.
 Designed for Raspberry Pi Zero 2 W - plain HTTP, no authentication, maximum simplicity.

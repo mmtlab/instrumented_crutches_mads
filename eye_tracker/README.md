@@ -2,7 +2,7 @@
 
 This is a Python agent for [MADS](https://github.com/pbosetti/MADS) that integrates with Pupil Labs Neon eye trackers.
 
-*Required MADS version: 2.0.0.*
+*Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 ## Description
 

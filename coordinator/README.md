@@ -2,7 +2,7 @@
 
 This is a Filter plugin for [MADS](https://github.com/pbosetti/MADS). 
 
-*Required MADS version: 2.0.0.*
+*Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 
 ## Supported platforms
@@ -26,7 +26,7 @@ sudo cmake --install build
 Windows (debug only):
 
 ```powershell
-cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)"
+cmake -Bbuild -DCMAKE_INSTALL_PREFIX="$(mads -p)" -DRASPBERRYPI_PLATFORM=OFF
 cmake --build build --config Release -t install
 ```
 

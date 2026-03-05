@@ -36,6 +36,10 @@ if(UNIX AND NOT APPLE)
   set(LINUX TRUE)
 endif()
 
+# OPTIONS ######################################################################
+# Set this option to OFF to emulate sensor recording, which can be useful for development and testing
+option(RASPBERRYPI_PLATFORM "Raspberri Pi Platform" ON)
+
 # DEPENDENCIES #################################################################
 include(FetchContent)
 # pugg is for the plugin system
