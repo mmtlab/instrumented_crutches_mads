@@ -16,7 +16,8 @@
         currentStatus: 'idle',
         timerInterval: null,
         startTime: null,
-        currentConditionId: null
+        currentConditionId: null,
+        datetimeHealthStatusTimeoutId: null
     };
     
     // DOM elements
@@ -68,6 +69,8 @@
         statusHdf5State: document.getElementById('status-hdf5-state'),
         statusHdf5Value: document.getElementById('status-hdf5-value'),
         toggleNodeStatusBtn: document.getElementById('toggle-node-status-btn'),
+        datetimeUpdateBtn: document.getElementById('datetime-update-btn'),
+        coordinatorLastUpdate: document.getElementById('coordinator-last-update'),
         nodeStatusContent: document.getElementById('node-status-content'),
         conditionBtn: document.getElementById('condition-btn'),
         conditionsModal: document.getElementById('conditions-modal'),
@@ -265,6 +268,37 @@
         valueLabel.textContent = statusValue;
     }
 
+    function formatStatusTimestamp(timestampRaw) {
+        if (!timestampRaw) return '—';
+        const parsed = new Date(timestampRaw);
+        if (Number.isNaN(parsed.getTime())) {
+            return String(timestampRaw);
+        }
+        return parsed.toLocaleString();
+    }
+
+    function updateCoordinatorLastUpdate(timestampRaw) {
+        if (!elements.coordinatorLastUpdate) return;
+        elements.coordinatorLastUpdate.textContent = formatStatusTimestamp(timestampRaw);
+    }
+
+    async function requestHealthStatus(reason = '') {
+        try {
+            const response = await fetch(`${API_BASE}/health_status`, { method: 'POST' });
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log(`✅ Health status requested${reason ? ` (${reason})` : ''}:`, data);
+            await loadAndUpdateStatusState();
+            await checkNewStatusMessages();
+            return data;
+        } catch (error) {
+            console.error(`❌ Health status request failed${reason ? ` (${reason})` : ''}:`, error);
+            return null;
+        }
+    }
+
     function setServiceStatus(serviceName, status, statusValue) {
         let indicator, stateLabel, valueLabel;
         
@@ -379,6 +413,10 @@
         const source = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString();
         const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
         const statusValue = (msg.status || '').toString();  // New status field from message
+
+        if (sourceNorm === 'coordinator') {
+            updateCoordinatorLastUpdate(msg.timestamp || msg.timecode || '');
+        }
 
         // Handle eye-tracker sensors (pupil_neon, eye_tracker)
         if (sourceNorm.includes('eye_tracker') || sourceNorm.includes('pupil_neon')) {
@@ -708,6 +746,42 @@
             showFeedback('✗ Cannot set offset. Check connection.', 'error');
         }
     }
+
+    async function sendDatetimeUpdate() {
+        try {
+            const clientDatetime = formatClientDatetimeForRaspi();
+            const response = await fetch(`${API_BASE}/datetime_update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    datetime_to_set: clientDatetime
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                showFeedback(`✓ Datetime updated (${clientDatetime})`, 'success');
+            } else {
+                showFeedback(`⚠ ${data.message}`, 'warning');
+            }
+
+            if (state.datetimeHealthStatusTimeoutId) {
+                clearTimeout(state.datetimeHealthStatusTimeoutId);
+            }
+            state.datetimeHealthStatusTimeoutId = setTimeout(() => {
+                requestHealthStatus('3s after datetime update button').finally(() => {
+                    state.datetimeHealthStatusTimeoutId = null;
+                });
+            }, 3000);
+        } catch (error) {
+            console.error('Datetime update error:', error);
+            showFeedback('✗ Cannot update datetime. Check connection.', 'error');
+        }
+    }
     
     // Show offset feedback message
     // Load last test configuration
@@ -909,9 +983,10 @@
 
             // Update each component's status indicator and value
             if (statusState.coordinator) {
-                const {message, status: statusValue} = statusState.coordinator;
+                const {message, status: statusValue, timestamp} = statusState.coordinator;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setServiceStatus('coordinator', sensorStatus, statusValue);
+                updateCoordinatorLastUpdate(timestamp);
             }
 
             if (statusState.hdf5_writer) {
@@ -1248,6 +1323,9 @@
     if (elements.toggleNodeStatusBtn) {
         elements.toggleNodeStatusBtn.addEventListener('click', toggleNodeStatusPanel);
     }
+    if (elements.datetimeUpdateBtn) {
+        elements.datetimeUpdateBtn.addEventListener('click', sendDatetimeUpdate);
+    }
     elements.saveCommentBtn.addEventListener('click', saveComment);
     elements.conditionBtn.addEventListener('click', openConditionsModal);
     elements.closeConditionsBtn.addEventListener('click', closeConditionsModal);
@@ -1271,6 +1349,16 @@
     elements.stopBtn.addEventListener('click', stopAcquisition);
     elements.errorDialogIgnore.addEventListener('click', handleErrorIgnore);
     elements.errorDialogStop.addEventListener('click', handleErrorStop);
+
+    function formatClientDatetimeForRaspi(date = new Date()) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${year}${month}${day} ${hours}:${minutes}:${seconds}`;
+    }
     
     // Initialize on page load
     checkStatus();
@@ -1280,13 +1368,7 @@
     loadLastCondition();
     updateUI();
     console.log('🔄 Requesting health status on page load...');
-    fetch(`${API_BASE}/health_status`, { method: 'POST' })
-        .then(r => {
-            console.log(`✅ Health status request sent (${r.status})`);
-            return r.json();
-        })
-        .then(data => console.log('Health status response:', data))
-        .catch(e => console.error('❌ Health status error:', e));
+    requestHealthStatus('on page load');
     checkNewStatusMessages();
     setInterval(checkNewStatusMessages, 2000);
     

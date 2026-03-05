@@ -116,6 +116,11 @@ include_directories(${json_SOURCE_DIR}/include)
 # These plugins are always build and use for testing
 add_plugin(coordinator)
 
+if (RASPBERRYPI_PLATFORM)
+  target_compile_definitions(coordinator PRIVATE RASPBERRYPI_PLATFORM)
+  target_compile_definitions(coordinator_main PRIVATE RASPBERRYPI_PLATFORM)
+endif()
+
 
 # INSTALL ######################################################################
 if(APPLE)
