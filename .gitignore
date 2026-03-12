@@ -3,6 +3,7 @@
 /logger/build/
 /hdf5_writer/build/
 /tip_loadcell/build/
+/handle_loadcell/build/
 /web_server/data/
 
 # just for development
