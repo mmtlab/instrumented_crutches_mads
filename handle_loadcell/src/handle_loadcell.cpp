@@ -17,12 +17,18 @@
 #include <nlohmann/json.hpp>
 #include <pugg/Kernel.h>
 #include <array>
+#include <chrono>
 #include <cstdint>
+#include <map>
 
-#if defined(RPI)
-extern "C" {
-#include "ADS1263.h"
-}
+#ifdef RASPBERRYPI_PLATFORM
+  extern "C" {
+  #include "ADS1263.h"
+  }
+  #pragma message("This computer has the ADS1263 library installed.")
+#else
+  // If we are not on a Raspberry Pi, we don't have the actual sensor, so we can just emulate it by generating random values in the process method, which can be useful for development and testing on non-Raspberry Pi machines
+  #pragma message("This computer does not have the ADS1263 library available, sensor readings will be emulated with random values.")
 #endif
 
 // other includes as needed here
@@ -44,7 +50,7 @@ class Handle_loadcellPlugin : public Filter<json, json> {
 public:
 
   ~Handle_loadcellPlugin() override {
-#ifdef RPI
+#ifdef RASPBERRYPI_PLATFORM
     if (_adc_initialized) {
       DEV_Module_Exit();
     }
@@ -62,7 +68,41 @@ public:
   // return_type::error: _error is traced, skip process
   // return_type::critical: execution stops
   return_type load_data(json const &input, string topic = "", vector<unsigned char> const *blob = nullptr) override {
-    // Do something with the input data
+    
+    // if topic contains the "command" field, process commands here
+    if (input.contains("command")) {
+
+      string action = input.value("command", ""); // Get the command, default to empty string if not found
+      if (action == "start") {
+
+        _recording = true;
+        std::cout << std::endl << "Starting acquisition" << std::endl;
+
+      } else if (action == "stop") {
+
+        _recording = false;
+        std::cout << std::endl << "Stopping acquisition" << std::endl;
+
+      } else if (action == "set_offset") {
+        
+        // Setting offset is only allowed when not recording, if we are recording return an error
+        // This is to avoid changing the offset while we are acquiring data, which could lead to inconsistent data and make it difficult to understand the actual forces being applied on the crutches.
+        if (_recording) {
+          _error = "recording: set_offset not allowed while recording, request ignored";
+          return return_type::error;
+        }
+
+        _setting_offset = true;
+        std::cout << std::endl << "Setting offset" << std::endl;
+
+      } else {
+        return return_type::retry;
+      }
+    } else {
+      // if the message doesn't contain a command, we don't know how to handle it, so we retry
+      return return_type::retry;
+    }
+    
     return return_type::success;
   }
 
@@ -76,37 +116,108 @@ public:
   // return_type::critical: execution stops
   return_type process(json &out, vector<unsigned char> *blob = nullptr) override {
     out.clear();
+    const auto process_start = std::chrono::steady_clock::now();
 
-#ifdef RPI
-    if (!_adc_initialized) {
-      _error = "ADS1263 non inizializzato: chiamare set_params() prima di process().";
-      return return_type::error;
+    // Not valid states or transitions are handled in load_data, here we just process data
+    // Here we should have only valid states and errors related to reading the sensor
+
+    // Send periodic agent_status if 500ms have passed
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_health_status_time).count();
+    
+    if (_process_cycles <= 1000000000) {
+      ++_process_cycles;
+    } else {
+      _process_cycles = 0;
     }
-
-    ADS1263_GetAll(_channel_list.data(), _raw_values.data(), static_cast<int>(_channel_list.size()));
-
-    json channels = json::object();
-    for (size_t i = 0; i < _channel_list.size(); ++i) {
-      const auto raw = _raw_values[i];
-      const bool negative = (raw >> 31U) == 1U;
-      const double voltage = negative
-        ? -(2.0 * _ref_voltage - static_cast<double>(raw) / 2147483648.0 * _ref_voltage)
-        : (static_cast<double>(raw) / 2147483647.0 * _ref_voltage);
-
-      const string key = "IN" + to_string(_channel_list[i]);
-      channels[key] = {
-        {"raw", raw},
-        {"voltage", voltage}
-      };
-    }
-
-    out["channels"] = channels;
-#else
-    _error = "Lettura ADS1263 disponibile solo su Linux (driver C sysfs/SPI).";
-    return return_type::error;
-#endif
 
     // load the data as necessary and set the fields of the json out variable
+    if (_recording || _setting_offset || elapsed >= _health_status_period) {
+      
+      if (elapsed >= _health_status_period) {
+        out["agent_status"] = _recording ? "recording" : "idle";
+        _last_health_status_time = now;
+      } 
+
+      if (_recording){
+        #ifdef RASPBERRYPI_PLATFORM
+            if (!_adc_initialized) {
+              _error = "ADS1263 not initialized: call set_params() before process().";
+              return return_type::error;
+            }
+
+            const auto adc_read_start = std::chrono::steady_clock::now();
+            ADS1263_GetAll(_channel_list.data(), _raw_values.data(), static_cast<int>(_channel_list.size()));
+            _last_adc_read_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::steady_clock::now() - adc_read_start
+            ).count() / 1000.0;
+
+            out["force"] = build_channels_forces(true);
+        #else
+
+          // If we are not on a Raspberry Pi, we emulate the load cell readings by generating random values, which can be useful for development and testing on non-Raspberry Pi machines
+          out["force"] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 100.0; // Random value between 0 and 100 N
+
+        #endif
+      } else if (_setting_offset) {
+        #ifdef RASPBERRYPI_PLATFORM
+          if (!_adc_initialized) {
+            _error = "ADS1263 not initialized: call set_params() before process().";
+            return return_type::error;
+          }
+
+          ADS1263_GetAll(_channel_list.data(), _raw_values.data(), static_cast<int>(_channel_list.size()));
+          calibrate_channel_offsets();
+          _setting_offset = false;
+
+          ADS1263_GetAll(_channel_list.data(), _raw_values.data(), static_cast<int>(_channel_list.size()));
+          out["info"]["offset"]["value"] = offsets_as_json();
+          out["info"]["offset"]["test"] = build_channels_forces(true);
+          out["agent_status"] = "idle";
+
+        #else
+          // Emulated offset calibration path uses the same channel computation pipeline.
+          for (size_t i = 0; i < _raw_values.size(); ++i) {
+            _raw_values[i] = static_cast<uint32_t>(rand());
+          }
+
+          calibrate_channel_offsets();
+          _setting_offset = false;
+
+          for (size_t i = 0; i < _raw_values.size(); ++i) {
+            _raw_values[i] = static_cast<uint32_t>(rand());
+          }
+
+          out["info"]["offset"]["value"] = offsets_as_json();
+          out["info"]["offset"]["test"] = build_channels_forces(true);
+          out["agent_status"] = "idle";
+
+        #endif
+
+      }
+
+    } else {
+      // if there is no command to send and not enough time has passed, don't send anything
+      return return_type::retry;
+    }  
+
+    // If there is a message to send, we must send the crutch side
+    out["side"] = _side;
+
+    const auto process_end = std::chrono::steady_clock::now();
+    _last_process_ms = std::chrono::duration_cast<std::chrono::microseconds>(process_end - process_start).count() / 1000.0;
+    if (_last_process_time.time_since_epoch().count() != 0) {
+      _last_cycle_ms = std::chrono::duration_cast<std::chrono::microseconds>(process_end - _last_process_time).count() / 1000.0;
+    }
+    _last_process_time = process_end;
+
+    if (elapsed >= _health_status_period) {
+      out["perf"]["adc_read_ms"] = _last_adc_read_ms;
+      out["perf"]["process_ms"] = _last_process_ms;
+      out["perf"]["cycle_ms"] = _last_cycle_ms;
+      out["perf"]["adc1_rate"] = _adc1_rate;
+      out["perf"]["channels"] = static_cast<int>(_channel_list.size());
+    }
 
     // This sets the agent_id field in the output json object, only when it is
     // not empty
@@ -119,37 +230,80 @@ public:
     // (e.g. agent_id, etc.)
     Filter::set_params(params);
 
-    _params["adc1_rate"] = 7;   // ADS1263_100SPS
-    _params["ref_voltage"] = 4.12;
-
-    // then merge the defaults with the actually provided parameters
-    // params needs to be cast to json
-    _params.merge_patch(params);
-
-#ifdef RPI
-    _ref_voltage = _params.value("ref_voltage", 4.12);
-    const int adc_rate = _params.value("adc1_rate", 7);
-
-    if (_adc_initialized) {
-      DEV_Module_Exit();
-      _adc_initialized = false;
+    if (!_params.is_object()) {
+      _params = json::object();
+    }
+    if (params.is_object()) {
+      _params.merge_patch(params);
     }
 
-    if (DEV_Module_Init() != 0) {
-      _error = "DEV_Module_Init fallita.";
-      return;
+    _params["ref_voltage"] = _params.value("ref_voltage", 4.12);
+    _health_status_period = _params.value("health_status_period", 500); // default to 500 ms
+    _adc1_rate = _params.value("adc1_rate", 9); // ADS1263_1200SPS by default, but raspberry might not be able to keep up with this rate (100 fps is more realistic)
+
+    if (_params.contains("side") && (_params["side"] == "left" || _params["side"] == "right")) {
+      _side = _params["side"].get<string>();
+      _agent_id = "handle_loadcell_" + _side; // this is useful when the side field is not reachable
+      std::cout << "Side set to " << _side << std::endl;
+    } else {
+      _error = "Side parameter not set or invalid (only 'left' or 'right' allowed).";
+      std::cout << _error << std::endl;
+      throw std::runtime_error(_error);
     }
 
-    ADS1263_SetMode(0);
-    if (ADS1263_init_ADC1(static_cast<ADS1263_DRATE>(adc_rate)) != 0) {
-      DEV_Module_Exit();
-      _error = "ADS1263_init_ADC1 fallita.";
-      return;
+    // Parse input_map as indexed pairs: [[0, "up_front"], [1, "up_back"], ...]
+    if (_params.contains("input_map") && _params["input_map"].is_array()) {
+      map<int, string> parsed_input_map;
+      for (const auto &entry : _params["input_map"]) {
+        if (entry.is_array() && entry.size() == 2 && entry[0].is_number_integer() && entry[1].is_string()) {
+          parsed_input_map[entry[0].get<int>()] = entry[1].get<string>();
+        }
+      }
+      if (!parsed_input_map.empty()) {
+        _input_map = std::move(parsed_input_map);
+      }
     }
 
-    _adc_initialized = true;
-#endif
-      
+    // Parse range_map for selected side as indexed pairs: [[0, 1.0], [1, 1.0], ...]
+    if (_params.contains("range_map") && _params["range_map"].contains(_side) && _params["range_map"][_side].is_array()) {
+      map<int, double> parsed_range_map;
+      for (const auto &entry : _params["range_map"][_side]) {
+        if (entry.is_array() && entry.size() == 2 && entry[0].is_number_integer() && entry[1].is_number()) {
+          parsed_range_map[entry[0].get<int>()] = entry[1].get<double>();
+        }
+      }
+      if (!parsed_range_map.empty()) {
+        _range_map = std::move(parsed_range_map);
+      }
+    }
+
+    #ifdef RASPBERRYPI_PLATFORM
+      if (_adc_initialized) {
+        DEV_Module_Exit();
+        _adc_initialized = false;
+      }
+
+      if (DEV_Module_Init() != 0) {
+        _error = "DEV_Module_Init failed.";
+        return;
+      }
+
+      ADS1263_SetMode(0);
+      if (ADS1263_init_ADC1(static_cast<ADS1263_DRATE>(_adc1_rate)) != 0) {
+        DEV_Module_Exit();
+        _error = "ADS1263_init_ADC1 failed.";
+        return;
+      }
+
+      _adc_initialized = true;
+    #else
+
+      // If we are not on a Raspberry Pi, we emulate the load cell readings, so no need to initialize the HX711 sensor
+      std::cout << "Running in emulation mode, no ADS1263 initialization needed" << std::endl;
+
+    #endif
+    
+    _setting_offset = true; // Set offset at the beginning
   }
 
   // Implement this method if you want to provide additional information
@@ -163,10 +317,92 @@ public:
   };
 
 private:
+  double raw_to_ratio(uint32_t raw) const {
+    const bool negative = (raw >> 31U) == 1U;
+    return negative ? -(2.0 - static_cast<double>(raw) / 2147483648.0) : (static_cast<double>(raw) / 2147483647.0);
+  }
+
+  string channel_label(int channel_idx) const {
+    const auto label_it = _input_map.find(channel_idx);
+    return (label_it != _input_map.end()) ? label_it->second : ("IN" + to_string(channel_idx));
+  }
+
+  double channel_range(int channel_idx) const {
+    const auto range_it = _range_map.find(channel_idx);
+    return (range_it != _range_map.end()) ? range_it->second : 1.0;
+  }
+
+  double channel_offset(int channel_idx) const {
+    const auto offset_it = _offset_map.find(channel_idx);
+    return (offset_it != _offset_map.end()) ? offset_it->second : 0.0;
+  }
+
+  json build_channels_forces(bool apply_offset) const {
+    json channels = json::object();
+
+    for (size_t i = 0; i < _channel_list.size(); ++i) {
+      const int channel_idx = static_cast<int>(_channel_list[i]);
+      const double ratio = raw_to_ratio(_raw_values[i]);
+      const double range = channel_range(channel_idx);
+      const double offset = apply_offset ? channel_offset(channel_idx) : 0.0;
+      channels[channel_label(channel_idx)] = ratio * range - offset;
+    }
+
+    return channels;
+  }
+
+  void calibrate_channel_offsets() {
+    const json baseline = build_channels_forces(false);
+    for (size_t i = 0; i < _channel_list.size(); ++i) {
+      const int channel_idx = static_cast<int>(_channel_list[i]);
+      const string label = channel_label(channel_idx);
+      if (baseline.contains(label) && baseline[label].is_number()) {
+        _offset_map[channel_idx] = baseline[label].get<double>();
+      }
+    }
+  }
+
+  json offsets_as_json() const {
+    json out = json::object();
+    for (size_t i = 0; i < _channel_list.size(); ++i) {
+      const int channel_idx = static_cast<int>(_channel_list[i]);
+      out[channel_label(channel_idx)] = channel_offset(channel_idx);
+    }
+    return out;
+  }
+
   // Define the fields that are used to store internal resources
+
+  // Control flags
+  bool _recording = false;
+  bool _setting_offset = false;
+
+  string _side = "unknown";
+
+  int _health_status_period = 500; // in milliseconds, default to 500 ms
+  std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
+  unsigned long long _process_cycles = 0; // I dont know way, but without this counter the agent blocks after one process cycle
+  int _adc1_rate = 7;
+
+  double _last_adc_read_ms = 0.0;
+  double _last_process_ms = 0.0;
+  double _last_cycle_ms = 0.0;
+  std::chrono::steady_clock::time_point _last_process_time{};
+
   array<uint8_t, 8> _channel_list{0, 1, 2, 3, 4, 5, 6, 7};
+  map<int, string> _input_map{
+    {0, "up_front"}, {1, "up_back"}, {2, "right_front"}, {3, "right_back"},
+    {4, "left_front"}, {5, "left_back"}, {6, "down_front"}, {7, "down_back"}
+  };
+  map<int, double> _range_map{
+    {0, 1.0}, {1, 1.0}, {2, 1.0}, {3, 1.0},
+    {4, 1.0}, {5, 1.0}, {6, 1.0}, {7, 1.0}
+  };
+  map<int, double> _offset_map{
+    {0, 0.0}, {1, 0.0}, {2, 0.0}, {3, 0.0},
+    {4, 0.0}, {5, 0.0}, {6, 0.0}, {7, 0.0}
+  };
   array<uint32_t, 8> _raw_values{};
-  double _ref_voltage = 4.12;
   bool _adc_initialized = false;
 };
 

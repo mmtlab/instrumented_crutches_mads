@@ -134,6 +134,10 @@ include_directories(${json_SOURCE_DIR}/include)
 # These plugins are always build and use for testing
 if(RASPBERRYPI_PLATFORM)
   add_plugin(handle_loadcell LIBS ${HANDLE_LOADCELL_LIBS})
+  target_compile_definitions(handle_loadcell PRIVATE RASPBERRYPI_PLATFORM)
+  target_compile_definitions(handle_loadcell_main PRIVATE RASPBERRYPI_PLATFORM)
+else()
+  add_plugin(handle_loadcell)
 endif()
 
 

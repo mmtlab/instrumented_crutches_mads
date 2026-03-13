@@ -42,7 +42,7 @@ int main(void)
     
     // The faster the rate, the worse the stability
     // and the need to choose a suitable digital filter(REG_MODE1)
-    if(ADS1263_init_ADC1(ADS1263_100SPS) == 1) {
+    if(ADS1263_init_ADC1(ADS1263_1200SPS) == 1) {
         printf("\r\n END \r\n");
         DEV_Module_Exit();
         exit(0);
@@ -60,14 +60,24 @@ int main(void)
             
         UDOUBLE Value[ChannelNumber] = {0};
         while(1) {
+            struct timespec acq_start = {0, 0}, acq_end = {0, 0};
+            double acq_ms;
+
+            clock_gettime(CLOCK_REALTIME, &acq_start);
             ADS1263_GetAll(ChannelList, Value, ChannelNumber);  // Get ADC1 value
+            clock_gettime(CLOCK_REALTIME, &acq_end);
+            acq_ms = (double)(acq_end.tv_sec - acq_start.tv_sec) * 1000.0
+                + (double)(acq_end.tv_nsec - acq_start.tv_nsec) / 1000000.0;
+
             for(i=0; i<ChannelNumber; i++) {
                 if((Value[i]>>31) == 1)
                     printf("IN%d is -%lf \r\n", ChannelList[i], REF*2 - Value[i]/2147483648.0 * REF);      //7fffffff + 1
                 else
                     printf("IN%d is %lf \r\n", ChannelList[i], Value[i]/2147483647.0 * REF);       //7fffffff
             }
-            for(i=0; i<ChannelNumber; i++) {
+            printf("period = %lf ms \r\n", acq_ms); 
+            printf("freq = %lf Hz \r\n", 1000.0 / acq_ms); 
+            for(i=0; i<ChannelNumber+2; i++) {
                 printf("\33[1A");   // Move the cursor up
             }
         }
