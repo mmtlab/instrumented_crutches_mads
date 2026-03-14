@@ -279,7 +279,7 @@ private:
 
   int _health_status_period = 500; // in milliseconds, default to 500 ms
   std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
-  unsigned long long _process_cycles = 0; // I dont know way, but without this counter the agent blocks after one process cycle
+  unsigned long long _process_cycles = 0; // I dont know why, but without this counter the agent blocks after one process cycle
 
   // Internal variables
   string _side = "unknown";

@@ -95,7 +95,7 @@
         <div class="section">
             <div class="section-header">
                 <h2>Test Configuration</h2>
-                <button id="toggle-config-btn" class="toggle-btn collapsed" title="Collapse/Expand">+</button>
+                <button id="toggle-config-btn" class="toggle-btn collapsed" title="Collapse/Expand" aria-label="Toggle config panel"></button>
             </div>
             <div id="config-content" class="section-content collapsed">
                 <div class="form-group">
@@ -124,7 +124,7 @@
         <div class="section">
             <div class="section-header">
                 <h2>Comments</h2>
-                <button id="toggle-comments-btn" class="toggle-btn collapsed" title="Collapse/Expand">+</button>
+                <button id="toggle-comments-btn" class="toggle-btn collapsed" title="Collapse/Expand" aria-label="Toggle comments panel"></button>
             </div>
             <div id="comments-content" class="section-content collapsed">
                 <div class="form-group">
@@ -138,7 +138,7 @@
         <div class="section" id="node-status-section">
             <div class="section-header">
                 <h2>Status</h2>
-                <button id="toggle-node-status-btn" class="toggle-btn" title="Collapse/Expand">+</button>
+                <button id="toggle-node-status-btn" class="toggle-btn" title="Collapse/Expand" aria-label="Toggle status panel"></button>
             </div>
             <div id="node-status-content" class="section-content">
                 <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; align-items: center;">
@@ -151,6 +151,18 @@
                 <div class="node-status-grid">
                     <div class="node-status-card">
                         <div class="node-status-card-title">Left Crutch (Master)</div>
+                        <div class="node-status-item node-status-item-battery">
+                            <div class="battery-status" id="battery-left">
+                                <div class="battery-status-header">
+                                    <span class="battery-status-name">Battery</span>
+                                    <span id="battery-left-value" class="battery-status-value">--.-%</span>
+                                    <span id="battery-left-eta" class="battery-status-eta">ETA --:--</span>
+                                </div>
+                                <div class="battery-status-bar">
+                                    <span id="battery-left-fill" class="battery-status-fill"></span>
+                                </div>
+                            </div>
+                        </div>
                         <div class="node-status-item">
                             <div class="node-status-item-label">Coordinator</div>
                             <div id="status-coordinator" class="node-status-indicator node-status-unknown">
@@ -177,6 +189,14 @@
                         </div>
                         <div class="node-status-separator"></div>
                         <div class="node-status-item">
+                            <div class="node-status-item-label">Handle</div>
+                            <div id="handle-left" class="node-status-indicator node-status-unknown">
+                                <span class="node-status-indicator-name">handle_loadcell_left</span>
+                                <span id="handle-left-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                            <span id="handle-left-value" class="node-status-value"></span>
+                        </div>
+                        <div class="node-status-item">
                             <div class="node-status-item-label">Tip</div>
                             <div id="tip-left" class="node-status-indicator node-status-unknown">
                                 <span class="node-status-indicator-name">tip_loadcell_left</span>
@@ -187,6 +207,26 @@
                     </div>
                     <div class="node-status-card">
                         <div class="node-status-card-title">Right Crutch (Slave)</div>
+                        <div class="node-status-item node-status-item-battery">
+                            <div class="battery-status" id="battery-right">
+                                <div class="battery-status-header">
+                                    <span class="battery-status-name">Battery</span>
+                                    <span id="battery-right-value" class="battery-status-value">--.-%</span>
+                                    <span id="battery-right-eta" class="battery-status-eta">ETA --:--</span>
+                                </div>
+                                <div class="battery-status-bar">
+                                    <span id="battery-right-fill" class="battery-status-fill"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="node-status-item">
+                            <div class="node-status-item-label">Handle</div>
+                            <div id="handle-right" class="node-status-indicator node-status-unknown">
+                                <span class="node-status-indicator-name">handle_loadcell_right</span>
+                                <span id="handle-right-state" class="node-status-indicator-state">Unknown</span>
+                            </div>
+                            <span id="handle-right-value" class="node-status-value"></span>
+                        </div>
                         <div class="node-status-item">
                             <div class="node-status-item-label">Tip</div>
                             <div id="tip-right" class="node-status-indicator node-status-unknown">

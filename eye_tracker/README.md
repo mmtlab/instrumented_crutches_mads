@@ -1,4 +1,4 @@
-# Eye Tracker
+# Eye Tracker for MADS
 
 This is a Python agent for [MADS](https://github.com/pbosetti/MADS) that integrates with Pupil Labs Neon eye trackers.
 

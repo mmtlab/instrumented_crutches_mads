@@ -9,6 +9,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 import random
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -127,6 +128,7 @@ def check_status_messages():
                 side = extract_side_from_source(source)
                 if side and "side" not in payload:
                     payload["side"] = side
+                payload_side = str(payload.get("side", side) or "").lower()
                     
                 status_messages.append(payload)
                 print(f"✓ Status message added to buffer. Total messages: {len(status_messages)}")
@@ -136,12 +138,16 @@ def check_status_messages():
                 source_key = get_status_source_key(source)
                 status_state[source_key] = {
                     "source": source,
-                    "side": side,
+                    "side": payload_side,
                     "level": payload.get("level", "info"),
                     "message": payload.get("message", ""),
                     "status": payload.get("status", ""),
                     "timestamp": payload.get("timestamp")
                 }
+
+                battery_info = parse_battery_info(payload)
+                if battery_info:
+                    status_state[source_key].update(battery_info)
                 print(f"✓ Status state updated: {source_key} = {status_state[source_key]}")
                 
                 # Keep only last 100 messages
@@ -178,6 +184,41 @@ def get_status_source_key(source: str) -> str:
         "hdf5_writer" -> "hdf5_writer"
     """
     return (source or "system").lower().replace(".plugin", "")
+
+
+def parse_battery_info(payload: dict) -> dict:
+    """Extract battery fields from a status payload message string."""
+    if not isinstance(payload, dict):
+        return {}
+
+    message = str(payload.get("message", "") or "")
+    if "battery percent" not in message.lower():
+        return {}
+
+    result = {}
+
+    percent_match = re.search(
+        r"battery\s+percent\s*:\s*(-?\d+(?:\.\d+)?)\s*%",
+        message,
+        flags=re.IGNORECASE,
+    )
+    if percent_match:
+        try:
+            result["percent"] = float(percent_match.group(1))
+        except ValueError:
+            pass
+
+    remaining_match = re.search(
+        r"remaining\s+time\s*:\s*([^,]+)",
+        message,
+        flags=re.IGNORECASE,
+    )
+    if remaining_match:
+        remaining = remaining_match.group(1).strip()
+        if remaining:
+            result["remaining_battery_time"] = remaining
+
+    return result
 
 
 def build_status_message_key(payload: dict) -> str:
@@ -1715,6 +1756,8 @@ async def get_status_state():
     - coordinator: Controller/Coordinator status
     - tip_loadcell_left: Left crutch tip loadcell status
     - tip_loadcell_right: Right crutch tip loadcell status
+    - handle_loadcell_left: Left crutch handle loadcell status
+    - handle_loadcell_right: Right crutch handle loadcell status
     - hdf5_writer: Data logger status
     - eye_tracker: Eye tracker status
     """
@@ -1728,6 +1771,10 @@ async def get_status_state():
         "coordinator": None,
         "tip_loadcell_left": None,
         "tip_loadcell_right": None,
+        "handle_loadcell_left": None,
+        "handle_loadcell_right": None,
+        "battery_left": None,
+        "battery_right": None,
         "hdf5_writer": None,
         "eye_tracker": None,
         "raw": status_state  # Include raw state for debugging
@@ -1736,18 +1783,34 @@ async def get_status_state():
     # Map status_state keys to organized categories
     for source_key, status_info in status_state.items():
         source_lower = source_key.lower()
+        status_view = status_info
         
         if "coordinator" in source_lower or "controller" in source_lower:
-            organized_state["coordinator"] = status_info
-        elif "tip_loadcell" in source_lower or "loadcell" in source_lower:
-            if status_info.get("side") == "left":
-                organized_state["tip_loadcell_left"] = status_info
-            elif status_info.get("side") == "right":
-                organized_state["tip_loadcell_right"] = status_info
+            organized_state["coordinator"] = status_view
+        elif "ups_hat" in source_lower or "battery" in source_lower:
+            side = (status_view.get("side") or "").lower()
+            has_battery_data = status_view.get("percent") is not None
+            if side == "left" and has_battery_data:
+                organized_state["battery_left"] = status_view
+            elif side == "right" and has_battery_data:
+                organized_state["battery_right"] = status_view
+            elif has_battery_data:
+                organized_state["battery_left"] = status_view
+                organized_state["battery_right"] = status_view
+        elif source_lower.startswith("tip_loadcell") or source_lower == "loadcell" or source_lower.startswith("loadcell_"):
+            if status_view.get("side") == "left":
+                organized_state["tip_loadcell_left"] = status_view
+            elif status_view.get("side") == "right":
+                organized_state["tip_loadcell_right"] = status_view
+        elif source_lower.startswith("handle_loadcell"):
+            if status_view.get("side") == "left":
+                organized_state["handle_loadcell_left"] = status_view
+            elif status_view.get("side") == "right":
+                organized_state["handle_loadcell_right"] = status_view
         elif "hdf5" in source_lower:
-            organized_state["hdf5_writer"] = status_info
+            organized_state["hdf5_writer"] = status_view
         elif "eye_tracker" in source_lower or "pupil" in source_lower:
-            organized_state["eye_tracker"] = status_info
+            organized_state["eye_tracker"] = status_view
     
     return organized_state
 

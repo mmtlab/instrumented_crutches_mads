@@ -55,10 +55,24 @@
         commentFeedback: document.getElementById('comment-feedback'),
         tipLeft: document.getElementById('tip-left'),
         tipRight: document.getElementById('tip-right'),
+        handleLeft: document.getElementById('handle-left'),
+        handleRight: document.getElementById('handle-right'),
         tipLeftState: document.getElementById('tip-left-state'),
         tipRightState: document.getElementById('tip-right-state'),
+        handleLeftState: document.getElementById('handle-left-state'),
+        handleRightState: document.getElementById('handle-right-state'),
         tipLeftValue: document.getElementById('tip-left-value'),
         tipRightValue: document.getElementById('tip-right-value'),
+        handleLeftValue: document.getElementById('handle-left-value'),
+        handleRightValue: document.getElementById('handle-right-value'),
+        batteryLeft: document.getElementById('battery-left'),
+        batteryRight: document.getElementById('battery-right'),
+        batteryLeftValue: document.getElementById('battery-left-value'),
+        batteryRightValue: document.getElementById('battery-right-value'),
+        batteryLeftFill: document.getElementById('battery-left-fill'),
+        batteryRightFill: document.getElementById('battery-right-fill'),
+        batteryLeftEta: document.getElementById('battery-left-eta'),
+        batteryRightEta: document.getElementById('battery-right-eta'),
         statusCoordinator: document.getElementById('status-coordinator'),
         statusCoordinatorState: document.getElementById('status-coordinator-state'),
         statusCoordinatorValue: document.getElementById('status-coordinator-value'),
@@ -282,6 +296,41 @@
         elements.coordinatorLastUpdate.textContent = formatStatusTimestamp(timestampRaw);
     }
 
+    function setBatteryStatus(side, batteryInfo) {
+        const isLeft = side === 'left';
+        const container = isLeft ? elements.batteryLeft : elements.batteryRight;
+        const valueLabel = isLeft ? elements.batteryLeftValue : elements.batteryRightValue;
+        const fill = isLeft ? elements.batteryLeftFill : elements.batteryRightFill;
+        const eta = isLeft ? elements.batteryLeftEta : elements.batteryRightEta;
+
+        if (!container || !valueLabel || !fill || !eta) return;
+
+        const hasPercent = batteryInfo && Number.isFinite(Number(batteryInfo.percent));
+        const percent = hasPercent ? Math.max(0, Math.min(100, Number(batteryInfo.percent))) : null;
+        const remaining = batteryInfo && batteryInfo.remaining_battery_time ? String(batteryInfo.remaining_battery_time) : '--:--';
+
+        if (percent === null) {
+            valueLabel.textContent = '--.-%';
+            fill.style.width = '0%';
+            eta.textContent = 'ETA --:--';
+            container.classList.remove('battery-status-low', 'battery-status-mid', 'battery-status-high');
+            return;
+        }
+
+        valueLabel.textContent = `${percent.toFixed(1)}%`;
+        fill.style.width = `${percent.toFixed(1)}%`;
+        eta.textContent = `ETA ${remaining}`;
+
+        container.classList.remove('battery-status-low', 'battery-status-mid', 'battery-status-high');
+        if (percent < 25) {
+            container.classList.add('battery-status-low');
+        } else if (percent < 55) {
+            container.classList.add('battery-status-mid');
+        } else {
+            container.classList.add('battery-status-high');
+        }
+    }
+
     async function requestHealthStatus(reason = '') {
         try {
             const response = await fetch(`${API_BASE}/health_status`, { method: 'POST' });
@@ -356,6 +405,29 @@
         applyStatusValue(valueLabel, statusValue);
     }
 
+    function setHandleStatus(side, status, statusValue) {
+        const isLeft = side === 'left';
+        const indicator = isLeft ? elements.handleLeft : elements.handleRight;
+        const stateLabel = isLeft ? elements.handleLeftState : elements.handleRightState;
+        const valueLabel = isLeft ? elements.handleLeftValue : elements.handleRightValue;
+
+        if (!indicator || !stateLabel) return;
+
+        indicator.classList.remove(...tipStatusClasses);
+        if (status === 'live') {
+            indicator.classList.add('node-status-live');
+            stateLabel.textContent = 'Alive';
+        } else if (status === 'dead') {
+            indicator.classList.add('node-status-dead');
+            stateLabel.textContent = 'Dead';
+        } else {
+            indicator.classList.add('node-status-unknown');
+            stateLabel.textContent = 'Unknown';
+        }
+
+        applyStatusValue(valueLabel, statusValue);
+    }
+
     const eyetrackerStatusClasses = ['node-status-connected', 'node-status-disconnected'];
 
     function setEyetrackerStatus(status, statusValue, options = {}) {
@@ -404,6 +476,8 @@
         const sourceRaw = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString().toLowerCase();
         if (sourceRaw.includes('tip_loadcell_left')) return 'left';
         if (sourceRaw.includes('tip_loadcell_right')) return 'right';
+        if (sourceRaw.includes('handle_loadcell_left')) return 'left';
+        if (sourceRaw.includes('handle_loadcell_right')) return 'right';
         return '';
     }
 
@@ -413,6 +487,8 @@
         const source = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString();
         const sourceNorm = source.toLowerCase().replace(/\.plugin$/, '');
         const statusValue = (msg.status || '').toString();  // New status field from message
+        const isTipSource = sourceNorm.startsWith('tip_loadcell') || sourceNorm === 'loadcell' || sourceNorm.startsWith('loadcell_');
+        const isHandleSource = sourceNorm.startsWith('handle_loadcell');
 
         if (sourceNorm === 'coordinator') {
             updateCoordinatorLastUpdate(msg.timestamp || msg.timecode || '');
@@ -447,8 +523,11 @@
             // Remove shutdown messages for this source (with or without side)
             removeShutdownMessagesForNode(source, side);
             // Update tip status only if we have a side (loadcell)
-            if (side) {
+            if (isTipSource && side) {
                 setTipStatus(side, 'live', statusValue);
+            }
+            if (isHandleSource && side) {
+                setHandleStatus(side, 'live', statusValue);
             }
             // Update master services status
             if (sourceNorm === 'coordinator') {
@@ -458,8 +537,11 @@
             }
         } else if (isShutdown) {
             // Update tip status only if we have a side (loadcell)
-            if (side) {
+            if (isTipSource && side) {
                 setTipStatus(side, 'dead', statusValue);
+            }
+            if (isHandleSource && side) {
+                setHandleStatus(side, 'dead', statusValue);
             }
             // Update master services status
             if (sourceNorm === 'coordinator') {
@@ -469,8 +551,11 @@
             }
         } else if (statusValue) {
             const derivedStatus = deriveIndicatorStatus(statusValue);
-            if (side) {
+            if (isTipSource && side) {
                 setTipStatus(side, derivedStatus, statusValue);
+            }
+            if (isHandleSource && side) {
+                setHandleStatus(side, derivedStatus, statusValue);
             }
             if (sourceNorm === 'coordinator') {
                 setServiceStatus('coordinator', derivedStatus, statusValue);
@@ -871,25 +956,28 @@
         const loggerNode = document.querySelector('[id="status-hdf5"]');
         const eyetrackerNode = document.querySelector('[id="status-eyetracker"]');
         const tipNode = masterCard.querySelector('[id*="tip-"]');
+        const handleNode = masterCard.querySelector('[id*="handle-"]');
 
         const coordinatorItem = coordinatorNode ? coordinatorNode.closest('.node-status-item') : null;
         const loggerItem = loggerNode ? loggerNode.closest('.node-status-item') : null;
         const eyetrackerItem = eyetrackerNode ? eyetrackerNode.closest('.node-status-item') : null;
         const separator = leftCard.querySelector('.node-status-separator');
         const tipItem = tipNode ? tipNode.closest('.node-status-item') : null;
+        const handleItem = handleNode ? handleNode.closest('.node-status-item') : null;
+        const sensorAnchor = handleItem || tipItem;
         
-        if (coordinatorItem && loggerItem && eyetrackerItem && separator && tipItem) {
+        if (coordinatorItem && loggerItem && eyetrackerItem && separator && sensorAnchor) {
             // Remove from their current location
             coordinatorItem.remove();
             loggerItem.remove();
             eyetrackerItem.remove();
             separator.remove();
             
-            // Insert into master card maintaining order: Coordinator, Logger, Eye-tracker, Separator, Tip
-            tipItem.parentNode.insertBefore(coordinatorItem, tipItem);
-            coordinatorItem.parentNode.insertBefore(loggerItem, tipItem);
-            loggerItem.parentNode.insertBefore(eyetrackerItem, tipItem);
-            eyetrackerItem.parentNode.insertBefore(separator, tipItem);
+            // Insert into master card maintaining order: Coordinator, Logger, Eye-tracker, Separator, Handle/Tip block
+            sensorAnchor.parentNode.insertBefore(coordinatorItem, sensorAnchor);
+            coordinatorItem.parentNode.insertBefore(loggerItem, sensorAnchor);
+            loggerItem.parentNode.insertBefore(eyetrackerItem, sensorAnchor);
+            eyetrackerItem.parentNode.insertBefore(separator, sensorAnchor);
         }
         
         console.log(`✓ Status panel configured: master=${masterSide}`);
@@ -981,6 +1069,9 @@
             if (!response.ok) return;
             const statusState = await response.json();
 
+            setBatteryStatus('left', statusState.battery_left);
+            setBatteryStatus('right', statusState.battery_right);
+
             // Update each component's status indicator and value
             if (statusState.coordinator) {
                 const {message, status: statusValue, timestamp} = statusState.coordinator;
@@ -1001,10 +1092,22 @@
                 setTipStatus('left', sensorStatus, statusValue);
             }
 
+            if (statusState.handle_loadcell_left) {
+                const {status: statusValue} = statusState.handle_loadcell_left;
+                const sensorStatus = deriveIndicatorStatus(statusValue);
+                setHandleStatus('left', sensorStatus, statusValue);
+            }
+
             if (statusState.tip_loadcell_right) {
                 const {message, status: statusValue} = statusState.tip_loadcell_right;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('right', sensorStatus, statusValue);
+            }
+
+            if (statusState.handle_loadcell_right) {
+                const {status: statusValue} = statusState.handle_loadcell_right;
+                const sensorStatus = deriveIndicatorStatus(statusValue);
+                setHandleStatus('right', sensorStatus, statusValue);
             }
 
             if (statusState.eye_tracker) {

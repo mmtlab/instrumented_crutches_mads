@@ -1,3 +1,4 @@
+import argparse
 from cProfile import label
 import subprocess
 import sys
@@ -432,10 +433,15 @@ class PupilNeonAgent:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="UPS HAT MADS agent")
+    parser.add_argument("-s", "--server", default="tcp://localhost:9092",
+                        help="Broker URL (default: tcp://localhost:9092)")
+    args = parser.parse_args()
+
     agent = None
     exit_code = 0
     try:
-        agent = PupilNeonAgent()
+        agent = PupilNeonAgent(broker_url=args.server)
         agent.run()
     except KeyboardInterrupt:
         exit_code = 0

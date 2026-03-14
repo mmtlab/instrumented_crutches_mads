@@ -185,18 +185,7 @@ public:
       
       // Handle health info messages 
       if (input.contains("agent_status")) {
-
-        // Get side from the side field if present
-        // If the side is not specified, it will be set to void and the message will be considered as not related to a specific side
-        if (input.contains("side")) {
-          if(input["side"].is_string()) {
-            side = input["side"].get<string>();
-          }
-        } 
         
-        // add side only when needed to distinguish the topic
-        source += side.empty() ? "" : "_" + side;; // e.g. tip_loadcell_left, tip_loadcell_right, coordinator (if no side specified)
-
         if (input["agent_status"].is_string()) {
           status = input["agent_status"].get<string>();
           level = "info";
@@ -204,9 +193,10 @@ public:
           // Check if is info, warning, error or critical based on the status value, to set the level accordingly
           if (input.contains("info")) {
 
-            cout << "Received info message: " << input["info"].dump() << endl;
-            // Handle offset messages from loadcell topic
-            if (input["info"].contains("offset")){
+            //cout << "Received info message: " << input["info"].dump() << endl;
+            
+            // Handle offset messages from tip loadcell topic
+            if (input["info"].contains("offset") && source == "tip_loadcell") {
               if (input["info"]["offset"].contains("value") && input["info"]["offset"].contains("test")) {
                 // Format message like: "offset value = 50.0 N, offset test = 5.0 N"
                 float offset_value = input["info"]["offset"]["value"].get<float>();
@@ -217,7 +207,57 @@ public:
                 message = "offset value: " + val_str.str() + " N, offset test: " + test_str.str() + " N";
               }
             }
-            
+
+            // Handle offset messages from handle loadcell topic
+            if (input["info"].contains("offset") && source == "handle_loadcell") {
+              if (input["info"]["offset"].contains("value") && input["info"]["offset"].contains("test")) {
+                // Format message like: "offset value = [50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0] N, offset test = [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0] N"
+                // always send the status in this order:
+                // "up_front", "up_back", "right_front", "right_back", "left_front", "left_back", "down_front", "down_back"
+                std::ostringstream val_str, test_str;
+                for (const auto& label : {"up_front", "up_back", "right_front", "right_back", "left_front", "left_back", "down_front", "down_back"}) {
+                  float offset_value = input["info"]["offset"]["value"][label].get<float>();
+                  float offset_test = input["info"]["offset"]["test"][label].get<float>();
+                  val_str << std::fixed << std::setprecision(1) << offset_value << ", ";
+                  test_str << std::fixed << std::setprecision(1) << offset_test << ", ";
+                }
+                message = "offset value: [" + val_str.str().substr(0, val_str.str().length() - 2) + "] N, offset test: [" + test_str.str().substr(0, test_str.str().length() - 2) + "] N";
+              }
+            }
+
+            // handle battery status messages from ups_hat topic
+            if (input["info"].contains("percent") && source == "ups_hat") {
+              
+              // Format message like: "battery percent = 80.0%"
+              if (input["info"]["percent"].is_number()) {
+                float battery_percent = input["info"]["percent"].get<float>();
+                std::ostringstream percent_str;
+                percent_str << std::fixed << std::setprecision(1) << battery_percent;
+                message = "battery percent: " + percent_str.str() + "%";
+
+                if (input["info"].contains("remaining_battery_time")) {
+                  if (input["info"]["remaining_battery_time"].is_string()) {
+                    string battery_remaining_time = input["info"]["remaining_battery_time"].get<string>();
+                    message += ", remaining time: " + battery_remaining_time;
+                  }
+                }
+
+              } else {
+                // just ignore it if the format is not ok
+                return return_type::retry;
+              }
+              
+              /* Ignore the remaining battery time for now, because it is not clear how to handle it in a consistent way, since it can be in different formats (e.g. "18:45", "2h 30m", etc.) and it is not clear if it is the remaining time at the current consumption or at full charge, so for now we just ignore it and keep the message simple with only the battery percent, but we can add it in the future if we find a consistent way to handle it
+              // Format message like: "battery percent = 80.0%, remaining time = 18:45" in HH:MM format
+              string battery_remaining_time = "unknown";
+              if (input["info"].contains("remaining_battery_time")) {
+                if (input["info"]["remaining_battery_time"].is_string()) {
+                  battery_remaining_time = input["info"]["remaining_battery_time"].get<string>();
+                }
+              }
+              */
+            }
+
             // Add here any other info to handle
           }
 
@@ -235,9 +275,20 @@ public:
             level = "critical";
             message = input["critical"].get<string>();
           }
-          
+
+          // Get side from the side field if present
+          // If the side is not specified, it will be set to void and the message will be considered as not related to a specific side
+          if (input.contains("side")) {
+            if(input["side"].is_string()) {
+              side = input["side"].get<string>();
+            }
+          } 
+          // add side only when needed to distinguish the topic
+          source += side.empty() ? "" : "_" + side;; // e.g. tip_loadcell_left, tip_loadcell_right, coordinator (if no side specified)
+
           has_status = true;
         }
+
       } else if (input.contains("command")) {
         // Handle the request of sending an update of the current agents status
         if (input["command"].is_string()) {

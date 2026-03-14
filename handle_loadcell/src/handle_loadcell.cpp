@@ -116,7 +116,6 @@ public:
   // return_type::critical: execution stops
   return_type process(json &out, vector<unsigned char> *blob = nullptr) override {
     out.clear();
-    const auto process_start = std::chrono::steady_clock::now();
 
     // Not valid states or transitions are handled in load_data, here we just process data
     // Here we should have only valid states and errors related to reading the sensor
@@ -146,12 +145,10 @@ public:
               return return_type::error;
             }
 
-            const auto adc_read_start = std::chrono::steady_clock::now();
+            // read from the ADC 
             ADS1263_GetAll(_channel_list.data(), _raw_values.data(), static_cast<int>(_channel_list.size()));
-            _last_adc_read_ms = std::chrono::duration_cast<std::chrono::microseconds>(
-              std::chrono::steady_clock::now() - adc_read_start
-            ).count() / 1000.0;
-
+            
+            // convert raw values to forces and store in the output json object
             out["force"] = build_channels_forces(true);
         #else
 
@@ -203,21 +200,6 @@ public:
 
     // If there is a message to send, we must send the crutch side
     out["side"] = _side;
-
-    const auto process_end = std::chrono::steady_clock::now();
-    _last_process_ms = std::chrono::duration_cast<std::chrono::microseconds>(process_end - process_start).count() / 1000.0;
-    if (_last_process_time.time_since_epoch().count() != 0) {
-      _last_cycle_ms = std::chrono::duration_cast<std::chrono::microseconds>(process_end - _last_process_time).count() / 1000.0;
-    }
-    _last_process_time = process_end;
-
-    if (elapsed >= _health_status_period) {
-      out["perf"]["adc_read_ms"] = _last_adc_read_ms;
-      out["perf"]["process_ms"] = _last_process_ms;
-      out["perf"]["cycle_ms"] = _last_cycle_ms;
-      out["perf"]["adc1_rate"] = _adc1_rate;
-      out["perf"]["channels"] = static_cast<int>(_channel_list.size());
-    }
 
     // This sets the agent_id field in the output json object, only when it is
     // not empty
@@ -381,13 +363,8 @@ private:
 
   int _health_status_period = 500; // in milliseconds, default to 500 ms
   std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
-  unsigned long long _process_cycles = 0; // I dont know way, but without this counter the agent blocks after one process cycle
+  unsigned long long _process_cycles = 0; // I dont know why, but without this counter the agent blocks after one process cycle
   int _adc1_rate = 7;
-
-  double _last_adc_read_ms = 0.0;
-  double _last_process_ms = 0.0;
-  double _last_cycle_ms = 0.0;
-  std::chrono::steady_clock::time_point _last_process_time{};
 
   array<uint8_t, 8> _channel_list{0, 1, 2, 3, 4, 5, 6, 7};
   map<int, string> _input_map{
