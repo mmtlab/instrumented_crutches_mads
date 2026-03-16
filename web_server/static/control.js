@@ -75,14 +75,20 @@
         tipRight: document.getElementById('tip-right'),
         handleLeft: document.getElementById('handle-left'),
         handleRight: document.getElementById('handle-right'),
+        ppgLeft: document.getElementById('ppg-left'),
+        ppgRight: document.getElementById('ppg-right'),
         tipLeftState: document.getElementById('tip-left-state'),
         tipRightState: document.getElementById('tip-right-state'),
         handleLeftState: document.getElementById('handle-left-state'),
         handleRightState: document.getElementById('handle-right-state'),
+        ppgLeftState: document.getElementById('ppg-left-state'),
+        ppgRightState: document.getElementById('ppg-right-state'),
         tipLeftValue: document.getElementById('tip-left-value'),
         tipRightValue: document.getElementById('tip-right-value'),
         handleLeftValue: document.getElementById('handle-left-value'),
         handleRightValue: document.getElementById('handle-right-value'),
+        ppgLeftValue: document.getElementById('ppg-left-value'),
+        ppgRightValue: document.getElementById('ppg-right-value'),
         batteryLeft: document.getElementById('battery-left'),
         batteryRight: document.getElementById('battery-right'),
         batteryLeftValue: document.getElementById('battery-left-value'),
@@ -601,7 +607,32 @@
         if (sourceValue.includes('tip_loadcell_right')) return 'right';
         if (sourceValue.includes('handle_loadcell_left')) return 'left';
         if (sourceValue.includes('handle_loadcell_right')) return 'right';
+        if (sourceValue.includes('ppg_left')) return 'left';
+        if (sourceValue.includes('ppg_right')) return 'right';
         return '';
+    }
+
+    function setPpgStatus(side, status, statusValue) {
+        const isLeft = side === 'left';
+        const indicator = isLeft ? elements.ppgLeft : elements.ppgRight;
+        const stateLabel = isLeft ? elements.ppgLeftState : elements.ppgRightState;
+        const valueLabel = isLeft ? elements.ppgLeftValue : elements.ppgRightValue;
+
+        if (!indicator || !stateLabel) return;
+
+        indicator.classList.remove(...tipStatusClasses);
+        if (status === 'live') {
+            indicator.classList.add('node-status-live');
+            stateLabel.textContent = 'Alive';
+        } else if (status === 'dead') {
+            indicator.classList.add('node-status-dead');
+            stateLabel.textContent = 'Dead';
+        } else {
+            indicator.classList.add('node-status-unknown');
+            stateLabel.textContent = 'Unknown';
+        }
+
+        applyStatusValue(valueLabel, statusValue);
     }
 
     function updateSensorStatusFromMessage(msg) {
@@ -612,6 +643,7 @@
         const statusValue = (msg.status || '').toString();  // New status field from message
         const isTipSource = sourceNorm.startsWith('tip_loadcell') || sourceNorm === 'loadcell' || sourceNorm.startsWith('loadcell_');
         const isHandleSource = sourceNorm.startsWith('handle_loadcell');
+        const isPpgSource = sourceNorm === 'ppg' || sourceNorm.startsWith('ppg_');
 
         if (sourceNorm === 'coordinator') {
             updateCoordinatorLastUpdate(msg.timestamp || msg.timecode || '');
@@ -652,6 +684,9 @@
             if (isHandleSource && side) {
                 setHandleStatus(side, 'live', statusValue);
             }
+            if (isPpgSource && side) {
+                setPpgStatus(side, 'live', statusValue);
+            }
             // Update master services status
             if (sourceNorm === 'coordinator') {
                 setServiceStatus('coordinator', 'live', statusValue);
@@ -666,6 +701,9 @@
             if (isHandleSource && side) {
                 setHandleStatus(side, 'dead', statusValue);
             }
+            if (isPpgSource && side) {
+                setPpgStatus(side, 'dead', statusValue);
+            }
             // Update master services status
             if (sourceNorm === 'coordinator') {
                 setServiceStatus('coordinator', 'dead', statusValue);
@@ -679,6 +717,9 @@
             }
             if (isHandleSource && side) {
                 setHandleStatus(side, derivedStatus, statusValue);
+            }
+            if (isPpgSource && side) {
+                setPpgStatus(side, derivedStatus, statusValue);
             }
             if (sourceNorm === 'coordinator') {
                 setServiceStatus('coordinator', derivedStatus, statusValue);
@@ -1242,6 +1283,18 @@
                 if (isOffsetFeedbackMessage(message)) {
                     updateOffsetDisplay(message, statusState.handle_loadcell_right.source, statusState.handle_loadcell_right.side);
                 }
+            }
+
+            if (statusState.ppg_left) {
+                const {status: statusValue} = statusState.ppg_left;
+                const sensorStatus = deriveIndicatorStatus(statusValue);
+                setPpgStatus('left', sensorStatus, statusValue);
+            }
+
+            if (statusState.ppg_right) {
+                const {status: statusValue} = statusState.ppg_right;
+                const sensorStatus = deriveIndicatorStatus(statusValue);
+                setPpgStatus('right', sensorStatus, statusValue);
             }
 
             if (statusState.eye_tracker) {

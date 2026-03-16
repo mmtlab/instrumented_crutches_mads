@@ -1758,6 +1758,8 @@ async def get_status_state():
     - tip_loadcell_right: Right crutch tip loadcell status
     - handle_loadcell_left: Left crutch handle loadcell status
     - handle_loadcell_right: Right crutch handle loadcell status
+    - ppg_left: Left crutch PPG status
+    - ppg_right: Right crutch PPG status
     - hdf5_writer: Data logger status
     - eye_tracker: Eye tracker status
     """
@@ -1773,6 +1775,8 @@ async def get_status_state():
         "tip_loadcell_right": None,
         "handle_loadcell_left": None,
         "handle_loadcell_right": None,
+        "ppg_left": None,
+        "ppg_right": None,
         "battery_left": None,
         "battery_right": None,
         "hdf5_writer": None,
@@ -1807,6 +1811,11 @@ async def get_status_state():
                 organized_state["handle_loadcell_left"] = status_view
             elif status_view.get("side") == "right":
                 organized_state["handle_loadcell_right"] = status_view
+        elif source_lower == "ppg" or source_lower.startswith("ppg_"):
+            if status_view.get("side") == "left":
+                organized_state["ppg_left"] = status_view
+            elif status_view.get("side") == "right":
+                organized_state["ppg_right"] = status_view
         elif "hdf5" in source_lower:
             organized_state["hdf5_writer"] = status_view
         elif "eye_tracker" in source_lower or "pupil" in source_lower:
