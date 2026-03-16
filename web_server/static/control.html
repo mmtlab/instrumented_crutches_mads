@@ -46,33 +46,58 @@
             <div id="start-stop-feedback-container" style="margin-top: 8px;"></div>
         </div>
 
-        <div class="section">
-            <h2>Calibration</h2>
-            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
-                <button id="offset-btn" class="btn">Calibrate</button>
-                <div style="display: flex; align-items: center; gap: 20px; font-size: 14px;">
-                    <div style="display: flex; gap: 20px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <strong>Left:</strong>
-                            <div id="offset-left-indicator" class="offset-indicator offset-indicator-unknown">
-                                <span id="offset-left" style="font-weight: 600;">NA</span>
-                                <span style="font-size: 12px; font-weight: 600;">N</span>
-                            </div>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <strong>Right:</strong>
-                            <div id="offset-right-indicator" class="offset-indicator offset-indicator-unknown">
-                                <span id="offset-right" style="font-weight: 600;">NA</span>
-                                <span style="font-size: 12px; font-weight: 600;">N</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="color: #64748b; font-size: 13px;">
-                        <strong>last update:</strong> <span id="offset-time">—</span>
+        <div class="section" id="calibration-section">
+            <div class="section-header">
+                <h2>Calibration</h2>
+                <button id="toggle-calibration-btn" class="toggle-btn" title="Collapse/Expand" aria-label="Toggle calibration panel"></button>
+            </div>
+            <div id="calibration-content" class="section-content">
+                <div class="calibration-toolbar">
+                    <button id="offset-btn" class="btn">Calibrate</button>
+                    <div class="calibration-last-update">
+                        <strong>Last update:</strong> <span id="offset-time">—</span>
                     </div>
                 </div>
+                <div class="calibration-grid">
+                    <div class="calibration-card">
+                        <div id="calibration-left-title" class="calibration-card-title">Left Crutch</div>
+                        <div class="calibration-sensor-group">
+                            <div class="calibration-sensor-header">
+                                <span class="calibration-sensor-label">Handle</span>
+                            </div>
+                            <div id="offset-left-handle-grid" class="calibration-handle-grid"></div>
+                        </div>
+                        <div class="calibration-sensor-group">
+                            <div class="calibration-sensor-header">
+                                <span class="calibration-sensor-label">Tip</span>
+                            </div>
+                            <div id="offset-left-tip-indicator" class="offset-indicator offset-indicator-unknown">
+                                <span id="offset-left-tip" class="offset-indicator-value">NA</span>
+                                <span class="offset-indicator-unit">N</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="calibration-card">
+                        <div id="calibration-right-title" class="calibration-card-title">Right Crutch</div>
+                        <div class="calibration-sensor-group">
+                            <div class="calibration-sensor-header">
+                                <span class="calibration-sensor-label">Handle</span>
+                            </div>
+                            <div id="offset-right-handle-grid" class="calibration-handle-grid"></div>
+                        </div>
+                        <div class="calibration-sensor-group">
+                            <div class="calibration-sensor-header">
+                                <span class="calibration-sensor-label">Tip</span>
+                            </div>
+                            <div id="offset-right-tip-indicator" class="offset-indicator offset-indicator-unknown">
+                                <span id="offset-right-tip" class="offset-indicator-value">NA</span>
+                                <span class="offset-indicator-unit">N</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="offset-feedback-container" style="margin-top: 8px;"></div>
             </div>
-            <div id="offset-feedback-container" style="margin-top: 8px;"></div>
         </div>
 
         <div class="section">
@@ -144,7 +169,7 @@
                 <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; align-items: center;">
                     <button id="datetime-update-btn" class="btn">Update Datetime</button>
                     <span style="font-size: 13px; color: #64748b;">
-                        <strong>Last coordinator update:</strong>
+                        <strong>Last datetime update:</strong>
                         <span id="coordinator-last-update">—</span>
                     </span>
                 </div>

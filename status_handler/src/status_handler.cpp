@@ -247,15 +247,6 @@ public:
                 return return_type::retry;
               }
               
-              /* Ignore the remaining battery time for now, because it is not clear how to handle it in a consistent way, since it can be in different formats (e.g. "18:45", "2h 30m", etc.) and it is not clear if it is the remaining time at the current consumption or at full charge, so for now we just ignore it and keep the message simple with only the battery percent, but we can add it in the future if we find a consistent way to handle it
-              // Format message like: "battery percent = 80.0%, remaining time = 18:45" in HH:MM format
-              string battery_remaining_time = "unknown";
-              if (input["info"].contains("remaining_battery_time")) {
-                if (input["info"]["remaining_battery_time"].is_string()) {
-                  battery_remaining_time = input["info"]["remaining_battery_time"].get<string>();
-                }
-              }
-              */
             }
 
             // Add here any other info to handle

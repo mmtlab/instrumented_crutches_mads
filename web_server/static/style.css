@@ -535,6 +535,126 @@ h2 {
     color: #991b1b;
 }
 
+.calibration-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.calibration-last-update {
+    color: #64748b;
+    font-size: 13px;
+}
+
+.calibration-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.calibration-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.calibration-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.calibration-sensor-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.calibration-sensor-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.calibration-sensor-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.calibration-handle-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.calibration-handle-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.calibration-handle-item-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.calibration-handle-item-value {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.calibration-handle-item-value-text {
+    font-variant-numeric: tabular-nums;
+}
+
+.calibration-handle-item-unit,
+.offset-indicator-unit {
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.calibration-handle-item-unknown {
+    background: #e2e8f0;
+    border-color: #cbd5f5;
+    color: #475569;
+}
+
+.calibration-handle-item-ok {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.calibration-handle-item-warning {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
 /* Offset indicator */
 .offset-indicator {
     display: flex;
@@ -545,6 +665,12 @@ h2 {
     border: 1px solid;
     font-family: monospace;
     font-size: 14px;
+    width: fit-content;
+}
+
+.offset-indicator-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 .offset-indicator-unknown {
@@ -1132,6 +1258,18 @@ canvas {
     
     #status {
         font-size: 14px;
+    }
+
+    .calibration-toolbar {
+        align-items: stretch;
+    }
+
+    .calibration-last-update {
+        width: 100%;
+    }
+
+    .calibration-handle-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     
     canvas {

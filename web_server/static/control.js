@@ -19,6 +19,20 @@
         currentConditionId: null,
         datetimeHealthStatusTimeoutId: null
     };
+
+    const HANDLE_OFFSET_GROUPS = [
+        { key: 'up', label: 'UP', frontKey: 'up_front', backKey: 'up_back' },
+        { key: 'right', label: 'RIGHT', frontKey: 'right_front', backKey: 'right_back' },
+        { key: 'down', label: 'DOWN', frontKey: 'down_front', backKey: 'down_back' },
+        { key: 'left', label: 'LEFT', frontKey: 'left_front', backKey: 'left_back' }
+    ];
+    const HANDLE_OFFSET_ORDER = HANDLE_OFFSET_GROUPS.flatMap((group) => [group.frontKey, group.backKey]);
+    const offsetClasses = ['offset-indicator-unknown', 'offset-indicator-ok', 'offset-indicator-warning'];
+    const handleOffsetItemClasses = ['calibration-handle-item-unknown', 'calibration-handle-item-ok', 'calibration-handle-item-warning'];
+    const handleOffsetCells = {
+        left: {},
+        right: {}
+    };
     
     // DOM elements
     const elements = {
@@ -30,14 +44,18 @@
         stopBtn: document.getElementById('stop-btn'),
         feedback: document.getElementById('feedback'),
         offsetBtn: document.getElementById('offset-btn'),
-        offsetLeft: document.getElementById('offset-left'),
-        offsetRight: document.getElementById('offset-right'),
+        offsetLeftTip: document.getElementById('offset-left-tip'),
+        offsetRightTip: document.getElementById('offset-right-tip'),
         errorDialog: document.getElementById('error-dialog'),
         errorDialogMessage: document.getElementById('error-dialog-message'),
         errorDialogIgnore: document.getElementById('error-dialog-ignore'),
         errorDialogStop: document.getElementById('error-dialog-stop'),
-        offsetLeftIndicator: document.getElementById('offset-left-indicator'),
-        offsetRightIndicator: document.getElementById('offset-right-indicator'),
+        offsetLeftTipIndicator: document.getElementById('offset-left-tip-indicator'),
+        offsetRightTipIndicator: document.getElementById('offset-right-tip-indicator'),
+        offsetLeftHandleGrid: document.getElementById('offset-left-handle-grid'),
+        offsetRightHandleGrid: document.getElementById('offset-right-handle-grid'),
+        calibrationLeftTitle: document.getElementById('calibration-left-title'),
+        calibrationRightTitle: document.getElementById('calibration-right-title'),
         offsetTime: document.getElementById('offset-time'),
         offsetFeedbackContainer: document.getElementById('offset-feedback-container'),
         startStopFeedbackContainer: document.getElementById('start-stop-feedback-container'),
@@ -83,9 +101,11 @@
         statusHdf5State: document.getElementById('status-hdf5-state'),
         statusHdf5Value: document.getElementById('status-hdf5-value'),
         toggleNodeStatusBtn: document.getElementById('toggle-node-status-btn'),
+        toggleCalibrationBtn: document.getElementById('toggle-calibration-btn'),
         datetimeUpdateBtn: document.getElementById('datetime-update-btn'),
         coordinatorLastUpdate: document.getElementById('coordinator-last-update'),
         nodeStatusContent: document.getElementById('node-status-content'),
+        calibrationContent: document.getElementById('calibration-content'),
         conditionBtn: document.getElementById('condition-btn'),
         conditionsModal: document.getElementById('conditions-modal'),
         closeConditionsBtn: document.getElementById('close-conditions-btn'),
@@ -296,6 +316,104 @@
         elements.coordinatorLastUpdate.textContent = formatStatusTimestamp(timestampRaw);
     }
 
+    function buildHandleOffsetGrid(side) {
+        const grid = side === 'left' ? elements.offsetLeftHandleGrid : elements.offsetRightHandleGrid;
+        if (!grid) return;
+
+        grid.innerHTML = '';
+        handleOffsetCells[side] = {};
+
+        HANDLE_OFFSET_GROUPS.forEach((group) => {
+            const item = document.createElement('div');
+            item.className = 'calibration-handle-item calibration-handle-item-unknown';
+
+            const title = document.createElement('span');
+            title.className = 'calibration-handle-item-label';
+            title.textContent = group.label;
+
+            const valueWrap = document.createElement('span');
+            valueWrap.className = 'calibration-handle-item-value';
+
+            const valueText = document.createElement('span');
+            valueText.className = 'calibration-handle-item-value-text';
+            valueText.textContent = 'NA / NA';
+
+            const unit = document.createElement('span');
+            unit.className = 'calibration-handle-item-unit';
+            unit.textContent = 'N';
+
+            valueWrap.appendChild(valueText);
+            valueWrap.appendChild(unit);
+            item.appendChild(title);
+            item.appendChild(valueWrap);
+            grid.appendChild(item);
+
+            handleOffsetCells[side][group.key] = { item, valueText };
+        });
+    }
+
+    function configureCalibrationPanel() {
+        const isMasterLeft = masterSide === 'left';
+        if (elements.calibrationLeftTitle) {
+            elements.calibrationLeftTitle.textContent = `Left Crutch (${isMasterLeft ? 'Master' : 'Slave'})`;
+        }
+        if (elements.calibrationRightTitle) {
+            elements.calibrationRightTitle.textContent = `Right Crutch (${isMasterLeft ? 'Slave' : 'Master'})`;
+        }
+    }
+
+    function updateOffsetTimestamp() {
+        if (!elements.offsetTime) return;
+        const now = new Date();
+        elements.offsetTime.textContent = now.toLocaleTimeString('it-IT', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+
+    function parseOffsetNumberList(valuesText) {
+        return valuesText
+            .split(',')
+            .map((value) => Number.parseFloat(value.trim()));
+    }
+
+    function setTipOffsetValue(side, value) {
+        const valueLabel = side === 'left' ? elements.offsetLeftTip : elements.offsetRightTip;
+        const indicator = side === 'left' ? elements.offsetLeftTipIndicator : elements.offsetRightTipIndicator;
+        if (!valueLabel || !indicator || !Number.isFinite(value)) return;
+
+        valueLabel.textContent = value.toFixed(1);
+        indicator.classList.remove(...offsetClasses);
+        indicator.classList.add(Math.abs(value) > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
+    }
+
+    function setHandleOffsetValue(side, groupKey, frontValue, backValue) {
+        const cell = handleOffsetCells[side] ? handleOffsetCells[side][groupKey] : null;
+        if (!cell) return;
+
+        const frontText = Number.isFinite(frontValue) ? frontValue.toFixed(1) : 'NA';
+        const backText = Number.isFinite(backValue) ? backValue.toFixed(1) : 'NA';
+        cell.valueText.textContent = `${frontText} / ${backText}`;
+
+        const hasAnyValue = Number.isFinite(frontValue) || Number.isFinite(backValue);
+        const maxAbs = Math.max(
+            Number.isFinite(frontValue) ? Math.abs(frontValue) : 0,
+            Number.isFinite(backValue) ? Math.abs(backValue) : 0
+        );
+        cell.item.classList.remove(...handleOffsetItemClasses);
+        if (!hasAnyValue) {
+            cell.item.classList.add('calibration-handle-item-unknown');
+        } else {
+            cell.item.classList.add(maxAbs > 10 ? 'calibration-handle-item-warning' : 'calibration-handle-item-ok');
+        }
+    }
+
+    function isOffsetFeedbackMessage(message) {
+        const text = (message || '').toString();
+        return /offset\s*test\s*:/i.test(text);
+    }
+
     function setBatteryStatus(side, batteryInfo) {
         const isLeft = side === 'left';
         const container = isLeft ? elements.batteryLeft : elements.batteryRight;
@@ -474,10 +592,15 @@
         if (sideRaw === 'left' || sideRaw === 'right') return sideRaw;
 
         const sourceRaw = (msg.source || msg.name || msg.agent_id || msg.topic || '').toString().toLowerCase();
-        if (sourceRaw.includes('tip_loadcell_left')) return 'left';
-        if (sourceRaw.includes('tip_loadcell_right')) return 'right';
-        if (sourceRaw.includes('handle_loadcell_left')) return 'left';
-        if (sourceRaw.includes('handle_loadcell_right')) return 'right';
+        return getCrutchSideFromSource(sourceRaw);
+    }
+
+    function getCrutchSideFromSource(sourceRaw) {
+        const sourceValue = (sourceRaw || '').toString().toLowerCase();
+        if (sourceValue.includes('tip_loadcell_left')) return 'left';
+        if (sourceValue.includes('tip_loadcell_right')) return 'right';
+        if (sourceValue.includes('handle_loadcell_left')) return 'left';
+        if (sourceValue.includes('handle_loadcell_right')) return 'right';
         return '';
     }
 
@@ -566,46 +689,40 @@
     }
     
     // Update offset display values
-    function updateOffsetDisplay(message, side) {
-        // Parse message like: "offset value: 1.7 N, offset test: 4.3 N"
-        const offsetMatch = message.match(/offset\s*value\s*:\s*([-\d.]+)\s*N/i);
-        const testMatch = message.match(/offset\s*test\s*:\s*([-\d.]+)\s*N/i);
-        const offsetValue = offsetMatch ? parseFloat(offsetMatch[1]) : null;
-        const testValue = testMatch ? parseFloat(testMatch[1]) : null;
-        
-        const offsetClasses = ['offset-indicator-unknown', 'offset-indicator-ok', 'offset-indicator-warning'];
-        const targetSide = (side || '').toLowerCase();
-        
-        const updateSide = (which) => {
-            const value = testValue !== null ? testValue : offsetValue;
-            if (value === null || Number.isNaN(value)) return;
-            const absValue = Math.abs(testValue !== null ? testValue : value);
-            if (which === 'left') {
-                elements.offsetLeft.textContent = value.toFixed(2);
-                if (elements.offsetLeftIndicator) {
-                    elements.offsetLeftIndicator.classList.remove(...offsetClasses);
-                    elements.offsetLeftIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
-                }
-            } else if (which === 'right') {
-                elements.offsetRight.textContent = value.toFixed(2);
-                if (elements.offsetRightIndicator) {
-                    elements.offsetRightIndicator.classList.remove(...offsetClasses);
-                    elements.offsetRightIndicator.classList.add(absValue > 10 ? 'offset-indicator-warning' : 'offset-indicator-ok');
-                }
-            }
-        };
-        
-        if (targetSide === 'left' || targetSide === 'right') {
-            updateSide(targetSide);
-        } else {
-            updateSide('left');
-            updateSide('right');
+    function updateOffsetDisplay(message, source, side) {
+        const text = (message || '').toString();
+        const sourceNorm = (source || '').toString().toLowerCase().replace(/\.plugin$/, '');
+        const targetSide = (side || getCrutchSideFromSource(sourceNorm) || '').toLowerCase();
+
+        if (targetSide !== 'left' && targetSide !== 'right') return;
+
+        const handleTestMatch = text.match(/offset\s*test\s*:\s*\[([^\]]+)\]\s*N/i);
+        if (sourceNorm.startsWith('handle_loadcell') || handleTestMatch) {
+            if (!handleTestMatch) return;
+            const handleValues = parseOffsetNumberList(handleTestMatch[1]);
+            const valuesByLabel = {};
+            HANDLE_OFFSET_ORDER.forEach((label, index) => {
+                valuesByLabel[label] = handleValues[index];
+            });
+            HANDLE_OFFSET_GROUPS.forEach((group) => {
+                setHandleOffsetValue(
+                    targetSide,
+                    group.key,
+                    valuesByLabel[group.frontKey],
+                    valuesByLabel[group.backKey]
+                );
+            });
+            updateOffsetTimestamp();
+            return;
         }
-        
-        // Update time with current time in HH:MM:SS format
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        elements.offsetTime.textContent = timeStr;
+
+        const testMatch = text.match(/offset\s*test\s*:\s*([-\d.]+)\s*N/i);
+        const valueMatch = text.match(/offset\s*value\s*:\s*([-\d.]+)\s*N/i);
+        const value = testMatch ? Number.parseFloat(testMatch[1]) : (valueMatch ? Number.parseFloat(valueMatch[1]) : null);
+
+        if (!Number.isFinite(value)) return;
+        setTipOffsetValue(targetSide, value);
+        updateOffsetTimestamp();
     }
     
     // Format time as MM:SS
@@ -913,6 +1030,12 @@
         elements.toggleNodeStatusBtn.classList.toggle('collapsed');
     }
 
+    function toggleCalibrationPanel() {
+        if (!elements.calibrationContent || !elements.toggleCalibrationBtn) return;
+        elements.calibrationContent.classList.toggle('collapsed');
+        elements.toggleCalibrationBtn.classList.toggle('collapsed');
+    }
+
     // Configure Status panel based on masterSide
     function configureStatusPanel() {
         const cards = document.querySelectorAll('.node-status-card');
@@ -1014,10 +1137,9 @@
                     }
                     
                     // Check if this is an offset message
-                    // Parse message like: "offset value: 1.7 N, offset test: 4.3 N"
-                    const isOffsetMessage = /\boffset\s*value\s*:\s*([-\d.]+)\s*N/i.test(text || '') && /\boffset\s*test\s*:\s*([-\d.]+)\s*N/i.test(text || '');
+                    const isOffsetMessage = isOffsetFeedbackMessage(text);
                     if (isOffsetMessage) {
-                        updateOffsetDisplay(text, msg.side || msg.topic);
+                        updateOffsetDisplay(text, source, msg.side || msg.topic);
                         // Don't show the message as feedback, only update the display
                         return;
                     }
@@ -1090,24 +1212,36 @@
                 const {message, status: statusValue} = statusState.tip_loadcell_left;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('left', sensorStatus, statusValue);
+                if (isOffsetFeedbackMessage(message)) {
+                    updateOffsetDisplay(message, statusState.tip_loadcell_left.source, statusState.tip_loadcell_left.side);
+                }
             }
 
             if (statusState.handle_loadcell_left) {
-                const {status: statusValue} = statusState.handle_loadcell_left;
+                const {message, status: statusValue} = statusState.handle_loadcell_left;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setHandleStatus('left', sensorStatus, statusValue);
+                if (isOffsetFeedbackMessage(message)) {
+                    updateOffsetDisplay(message, statusState.handle_loadcell_left.source, statusState.handle_loadcell_left.side);
+                }
             }
 
             if (statusState.tip_loadcell_right) {
                 const {message, status: statusValue} = statusState.tip_loadcell_right;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('right', sensorStatus, statusValue);
+                if (isOffsetFeedbackMessage(message)) {
+                    updateOffsetDisplay(message, statusState.tip_loadcell_right.source, statusState.tip_loadcell_right.side);
+                }
             }
 
             if (statusState.handle_loadcell_right) {
-                const {status: statusValue} = statusState.handle_loadcell_right;
+                const {message, status: statusValue} = statusState.handle_loadcell_right;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setHandleStatus('right', sensorStatus, statusValue);
+                if (isOffsetFeedbackMessage(message)) {
+                    updateOffsetDisplay(message, statusState.handle_loadcell_right.source, statusState.handle_loadcell_right.side);
+                }
             }
 
             if (statusState.eye_tracker) {
@@ -1426,6 +1560,9 @@
     if (elements.toggleNodeStatusBtn) {
         elements.toggleNodeStatusBtn.addEventListener('click', toggleNodeStatusPanel);
     }
+    if (elements.toggleCalibrationBtn) {
+        elements.toggleCalibrationBtn.addEventListener('click', toggleCalibrationPanel);
+    }
     if (elements.datetimeUpdateBtn) {
         elements.datetimeUpdateBtn.addEventListener('click', sendDatetimeUpdate);
     }
@@ -1467,6 +1604,9 @@
     checkStatus();
     loadLastTestConfig();
     loadConditions();
+    buildHandleOffsetGrid('left');
+    buildHandleOffsetGrid('right');
+    configureCalibrationPanel();
     configureStatusPanel();
     loadLastCondition();
     updateUI();
