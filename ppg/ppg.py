@@ -1,0 +1,194 @@
+import argparse
+import subprocess
+import sys
+import os
+import time
+from enum import Enum
+from typing import Optional
+
+import max30100
+
+
+# locate mads python package
+mads_path = subprocess.check_output(["mads", "-p"], text=True).strip()
+sys.path.append(os.path.join(mads_path, "python"))
+
+from mads_agent import Agent, MessageType
+
+
+class AgentStatus(Enum):
+    STARTUP = 0
+    SHUTDOWN = 1
+    IDLE = 2
+    RECORDING = 3
+
+
+class PpgAgent:
+    def __init__(self, broker_url="tcp://localhost:9092", options="side=unknown"):
+        self.agent = Agent("ppg", broker_url)
+        self.agent.set_id("ppg")
+        self.agent.set_settings_timeout(2000)
+        if self.agent.init() != 0:
+            sys.stderr.write("Cannot contact broker\nCheck if the broker is running and the URL is correct.\n Check the mads.ini file.\n")
+            sys.exit(1)
+        self.agent.connect()
+
+        settings = self.agent.settings()
+
+        self.pub_topic = settings.get("pub_topic", "ppg")
+        self.sub_topic = settings.get("sub_topic", ["coordinator"])
+        if isinstance(self.sub_topic, str):
+            self.sub_topic = [self.sub_topic]
+        elif not isinstance(self.sub_topic, list):
+            self.sub_topic = [str(self.sub_topic)]
+
+        self.health_status_period = int(settings.get("health_status_period", 500))
+        self.period = int(settings.get("period", 1))
+
+        # Keep receive non-blocking enough to honor publish timers.
+        receive_timeout_ms = max(10, min(self.health_status_period, self.period, 100))
+        self.agent.set_receive_timeout(receive_timeout_ms)
+
+        self.side = settings.get("side", "unknown")
+        if options != "side=unknown":
+            options_dict = dict(opt.split("=", 1) for opt in options.split(",") if "=" in opt)
+            self.side = options_dict.get("side", "unknown")
+
+        self.mx30 = max30100.MAX30100()
+        self.mx30.enable_spo2()
+
+        # agent status tracking
+        self.agent_status = AgentStatus.STARTUP
+
+        self._accept_all_topics = "" in self.sub_topic
+        self._sub_topics_set = {str(topic) for topic in self.sub_topic if topic != ""}
+
+        time.sleep(0.5)  # Give some time for the agent to be fully ready
+
+        # After publishing startup status, we can set the status to IDLE to indicate we are ready for commands
+        self.agent_status = AgentStatus.IDLE
+        print("PPG agent started")
+
+    def _publish_metrics_and_status(self, ir=None, red=None, error: Optional[str] = None, include_status: bool = False):
+        payload = {
+            "side": self.side,
+        }
+
+        if include_status:
+            payload["agent_status"] = self.agent_status.name.lower()
+
+        if ir is not None:
+            payload["ir"] = ir
+
+        if red is not None:
+            payload["red"] = red
+
+        if error is not None:
+            payload["error"] = error
+
+        self.agent.publish(payload, self.pub_topic)
+
+    def start_recording(self):
+        if self.agent_status == AgentStatus.RECORDING:
+            return
+        self.agent_status = AgentStatus.RECORDING
+
+    def stop_recording(self):
+        if self.agent_status != AgentStatus.RECORDING:
+            return
+        self.agent_status = AgentStatus.IDLE
+
+    def _process_command(self, topic, message):
+        if not self._accept_all_topics and topic not in self._sub_topics_set:
+            return
+
+        if not isinstance(message, dict):
+            return
+
+        cmd = message.get("command")
+        if not cmd:
+            return
+
+        cmd = str(cmd).lower()
+        if cmd == "start":
+            self.start_recording()
+        elif cmd == "stop":
+            self.stop_recording()
+
+    def run(self):
+        """Main run loop: publish status/metrics and react to commands."""
+
+        health_period_s = max(self.health_status_period, 1) / 1000.0
+        sample_period_s = max(self.period, 1) / 1000.0
+
+        next_health_ts = time.monotonic() + health_period_s
+        next_sample_ts = time.monotonic() + sample_period_s
+
+        try:
+            while True:
+                now = time.monotonic()
+
+                if now >= next_health_ts:
+                    self._publish_metrics_and_status(ir=None, red=None, error=None, include_status=True)
+                    next_health_ts = now + health_period_s
+
+                if self.agent_status == AgentStatus.RECORDING and now >= next_sample_ts:
+                    try:
+                        self.mx30.read_sensor()
+                        self._publish_metrics_and_status(ir=self.mx30.ir, red=self.mx30.red, error=None, include_status=False)
+                    except Exception as exc:
+                        self._publish_metrics_and_status(ir=None, red=None, error=str(exc), include_status=False)
+                    next_sample_ts = now + sample_period_s
+
+                msg_type = self.agent.receive()
+                if msg_type != MessageType.NONE:
+                    topic, message = self.agent.last_message()
+                    self._process_command(topic, message)
+
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.agent_status = AgentStatus.SHUTDOWN
+            try:
+                self._publish_metrics_and_status(ir=None, red=None, error="Agent shutting down", include_status=True)
+            except Exception:
+                pass
+            try:
+                self.agent.disconnect()
+            except Exception:
+                pass
+
+
+def main():
+    parser = argparse.ArgumentParser(description="PPG MADS agent")
+    parser.add_argument("-s", "--server", default="tcp://localhost:9092",
+                        help="Broker URL (default: tcp://localhost:9092)")
+    parser.add_argument("-o", "--options", default="side=unknown",
+                        help="crutch side (default: side=unknown)")
+    args = parser.parse_args()
+
+    agent = None
+    last_error = None
+    exit_code = 0
+    try:
+        agent = PpgAgent(broker_url=args.server, options=args.options)
+        agent.run()
+    except KeyboardInterrupt:
+        exit_code = 0
+    except Exception as exc:
+        last_error = exc
+        sys.stderr.write(f"Error running PpgAgent: {exc}\n")
+        exit_code = 1
+    finally:
+        if agent is not None:
+            try:
+                if last_error is not None:
+                    agent._publish_metrics_and_status(ir=None, red=None, error=str(last_error), include_status=True)
+            except Exception:
+                pass
+        sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()
