@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Installation Guide - Instrumented Crutches</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Instrumented Crutches</h1>
+        <p>Real-time biomechanical and eye-tracking data acquisition system</p>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="overview.html">Overview</a></li>
+            <li><a href="installation.html" class="active">Installation</a></li>
+            <li><a href="usage.html">Usage Manual</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+            <li><a href="troubleshooting.html">Troubleshooting</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="content">
+            <h1>Installation Guide</h1>
+
+            <div class="alert alert-warning">
+                <strong>Prerequisites:</strong> Both Raspberry Pi Zero 2 boards must have Raspberry Pi OS Bookworm or later, with SSH access and network connectivity configured.
+            </div>
+
+            <div class="toc">
+                <h4>📋 Installation Steps</h4>
+                <ul>
+                    <li><a href="#prerequisites">Prerequisites</a></li>
+                    <li><a href="#install-mads">Install MADS</a></li>
+                    <li><a href="#clone-repo">Clone Repository</a></li>
+                    <li><a href="#install-agents">Install Agents</a></li>
+                    <li><a href="#configure-system">Configure System</a></li>
+                    <li><a href="#systemd-services">Enable Services</a></li>
+                    <li><a href="#verify-installation">Verify Installation</a></li>
+                </ul>
+            </div>
+
+            <h2 id="prerequisites">Prerequisites</h2>
+
+            <ul>
+                <li>Two Raspberry Pi Zero 2 W boards with microSD cards (64GB+)</li>
+                <li>Raspberry Pi OS Bookworm or later</li>
+                <li>Network connectivity (Ethernet or WiFi)</li>
+                <li>SSH access enabled on both boards</li>
+                <li>Basic Linux command-line skills</li>
+            </ul>
+
+            <pre><code># Check Raspberry Pi OS version
+cat /etc/os-release
+
+# Update system packages
+sudo apt update && sudo apt upgrade -y</code></pre>
+
+            <h2 id="install-mads">Install MADS Framework</h2>
+
+            <p>Install MADS v2.0.0 on both boards. Refer to <a href="https://github.com/pbosetti/MADS">MADS Documentation</a> for latest instructions.</p>
+
+            <pre><code># Download and install MADS 2.0.0
+cd /tmp
+wget https://github.com/pbosetti/MADS/releases/download/v2.0.0/mads_2.0.0_armv7l.deb
+sudo dpkg -i mads_2.0.0_armv7l.deb
+
+# Verify installation
+mads -v</code></pre>
+
+            <h2 id="clone-repo">Clone Repository</h2>
+
+            <p>Clone this repository on both boards (use the same location on both for consistency):</p>
+
+            <pre><code>cd ~
+git clone https://github.com/mmtlab/instrumented_crutches_mads.git
+cd instrumented_crutches_mads</code></pre>
+
+            <h2 id="install-agents">Install Agents</h2>
+
+            <p>Each agent must be installed separately following its README. Install <strong>only applicable agents</strong> for each crutch role:</p>
+
+            <h3>Master Crutch (Right) - Install All Agents</h3>
+
+            <pre><code>cd coordinator && make install && cd ..
+cd handle_loadcell && make install && cd ..
+cd tip_loadcell && make install && cd ..
+cd hdf5_writer && make install && cd ..
+cd status_handler && make install && cd ..
+cd web_server && pip install -r requirements.txt && cd ..
+cd eye_tracker && pip install -r requirements.txt && cd ..
+cd ppg && pip install -r requirements.txt && cd ..
+cd ups_hat && pip install -r requirements.txt && cd ..</code></pre>
+
+            <h3>Slave Crutch (Left) - Install Sensor Agents Only</h3>
+
+            <pre><code>cd tip_loadcell && make install && cd ..
+cd ppg && pip install -r requirements.txt && cd ..
+cd ups_hat && pip install -r requirements.txt && cd ..</code></pre>
+
+            <h2 id="configure-system">Configure System</h2>
+
+            <h3>Copy Configuration File</h3>
+
+            <p>Configure sensor calibration constants in <code>mads.ini</code>:</p>
+
+            <pre><code>sudo cp templates/mads.ini /usr/local/etc/
+sudo nano /usr/local/etc/mads.ini</code></pre>
+
+            <p>Edit calibration values for your specific load cells. See <a href="configuration.html">Configuration Reference</a> for details.</p>
+
+            <h3>Configure Network</h3>
+
+            <ol>
+                <li>Set <strong>static IP addresses</strong> on both boards (e.g., 10.42.0.1 for master, 10.42.0.2 for slave)</li>
+                <li>Configure <strong>hostname</strong> for easy identification</li>
+                <li>Ensure <strong>network connectivity</strong> between boards</li>
+            </ol>
+
+            <h2 id="systemd-services">Enable Systemd Services</h2>
+
+            <h3>Master Crutch (Right)</h3>
+
+            <pre><code>sudo cp templates/mads-broker.service /etc/systemd/system/
+sudo cp templates/mads-web_server.service /etc/systemd/system/
+sudo cp templates/mads-coordinator.service /etc/systemd/system/
+sudo cp templates/mads-status_handler.service /etc/systemd/system/
+sudo cp templates/mads-hdf5_writer.service /etc/systemd/system/
+sudo cp templates/mads-eye_tracker.service /etc/systemd/system/
+sudo cp templates/right/mads-tip_loadcell.service /etc/systemd/system/
+sudo cp templates/right/mads-ppg.service /etc/systemd/system/
+sudo cp templates/right/mads-ups.service /etc/systemd/system/
+
+sudo systemctl daemon-reload
+sudo systemctl enable mads-broker.service
+sudo systemctl enable mads-web_server.service
+sudo systemctl enable mads-coordinator.service
+sudo systemctl enable mads-status_handler.service
+sudo systemctl enable mads-hdf5_writer.service
+sudo systemctl enable mads-tip_loadcell.service
+sudo systemctl enable mads-eye_tracker.service
+sudo systemctl enable mads-ppg.service
+sudo systemctl enable mads-ups.service</code></pre>
+
+            <h3>Slave Crutch (Left)</h3>
+
+            <pre><code>sudo cp templates/left/mads-tip_loadcell.service /etc/systemd/system/
+sudo cp templates/left/mads-ppg.service /etc/systemd/system/
+sudo cp templates/mads-ups.service /etc/systemd/system/
+
+sudo systemctl daemon-reload
+sudo systemctl enable mads-tip_loadcell.service
+sudo systemctl enable mads-ppg.service
+sudo systemctl enable mads-ups.service</code></pre>
+
+            <h2 id="verify-installation">Verify Installation</h2>
+
+            <p>After first boot, verify all services are running:</p>
+
+            <pre><code># Check service status (master)
+sudo systemctl status mads-broker.service
+sudo systemctl status mads-web_server.service
+sudo systemctl status mads-coordinator.service
+
+# View service logs
+sudo journalctl -u mads-broker.service -f
+sudo journalctl -u mads-web_server.service -f
+
+# Test web interface
+curl http://localhost:8000/api/status</code></pre>
+
+            <div class="alert alert-success">
+                <strong>Installation Complete!</strong> Your system is now ready. Access the web interface at <code>http://master-ip:8000</code>
+            </div>
+
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2024-2026 Instrumented Crutches Project</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+            document.querySelectorAll('nav a').forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === currentPage);
+            });
+        });
+    </script>
+</body>
+</html>

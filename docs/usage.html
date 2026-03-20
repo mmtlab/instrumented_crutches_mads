@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usage Manual - Instrumented Crutches</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Instrumented Crutches</h1>
+        <p>Real-time biomechanical and eye-tracking data acquisition system</p>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="overview.html">Overview</a></li>
+            <li><a href="installation.html">Installation</a></li>
+            <li><a href="usage.html" class="active">Usage Manual</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+            <li><a href="troubleshooting.html">Troubleshooting</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="content">
+            <h1>Usage Manual</h1>
+
+            <div class="toc">
+                <h4>🎯 Quick Start Steps</h4>
+                <ul>
+                    <li><a href="#startup-sequence">Startup Sequence</a></li>
+                    <li><a href="#pre-acquisition">Pre-Acquisition Prep</a></li>
+                    <li><a href="#web-interface">Web Interface Guide</a></li>
+                    <li><a href="#data-acquisition">Recording Data</a></li>
+                    <li><a href="#download-export">Download & Export</a></li>
+                    <li><a href="#shutdown">Shutdown Sequence</a></li>
+                </ul>
+            </div>
+
+            <h2 id="startup-sequence">Startup Sequence</h2>
+
+            <h3>Step 1: Power On Master Crutch (Right)</h3>
+            <ol>
+                <li>Power on the right crutch</li>
+                <li>Wait 30-45 seconds for all services to start</li>
+                <li>Verify by checking system LED or accessing web interface</li>
+            </ol>
+
+            <h3>Step 2: Power On Slave Crutch (Left)</h3>
+            <ol>
+                <li>Power on the left crutch</li>
+                <li>Wait 20-30 seconds for sensor agents to start</li>
+                <li>Check that left crutch connects to master (monitor network status)</li>
+            </ol>
+
+            <h3>Step 3: Connect Eye Tracker (Optional)</h3>
+            <ol>
+                <li>Power on Pupil Neon glasses</li>
+                <li>Ensure glasses connect to system WiFi (CrutchWiFi)</li>
+                <li>Access web interface and verify eye-tracker status</li>
+            </ol>
+
+            <h2 id="pre-acquisition">Pre-Acquisition Calibration</h2>
+
+            <h3>Load Cell Calibration</h3>
+
+            <p>Before each acquisition session, perform calibration to zero-offset the load cells:</p>
+
+            <ol>
+                <li>Access web interface at <code>http://master-ip:8000</code></li>
+                <li>Navigate to <strong>Record</strong> tab</li>
+                <li>In <strong>Calibration</strong> section, click <strong>Calibrate</strong> button</li>
+                <li>Hold both crutches <strong>level and elevated</strong> (no weight on ground)</li>
+                <li>Wait for calibration to complete (2-3 seconds)</li>
+                <li>Verify offset values update in interface</li>
+            </ol>
+
+            <div class="alert alert-info">
+                <strong>Note:</strong> Calibration should be done with crutches held steady. Repeat before each measurement session or if calibration drifts.
+            </div>
+
+            <h2 id="web-interface">Web Interface Guide</h2>
+
+            <h3>Record Tab</h3>
+            <p>Main interface for data acquisition:</p>
+            <ul>
+                <li><strong>Status:</strong> Current system state (Ready, Recording, Error)</li>
+                <li><strong>Recording ID:</strong> Unique identifier for current session</li>
+                <li><strong>Duration:</strong> Elapsed time since recording started</li>
+                <li><strong>Condition:</strong> Current experimental condition</li>
+                <li><strong>Start/Stop Buttons:</strong> Control recording</li>
+                <li><strong>Condition Button:</strong> Change condition during recording</li>
+            </ul>
+
+            <h3>View Data Tab</h3>
+            <p>Real-time visualization of sensor data:</p>
+            <ul>
+                <li>Load cell forces over time</li>
+                <li>Eye gaze position</li>
+                <li>Heart rate and PPG waveforms</li>
+                <li>Live status of all agents</li>
+            </ul>
+
+            <h3>Download Tab</h3>
+            <p>Export recorded data:</p>
+            <ul>
+                <li>Browse available sessions</li>
+                <li>Download raw HDF5 files</li>
+                <li>Export to CSV format</li>
+                <li>Batch download multiple sessions</li>
+            </ul>
+
+            <h2 id="data-acquisition">Recording Data</h2>
+
+            <h3>Starting a Recording Session</h3>
+
+            <ol>
+                <li>Enter <strong>Subject ID</strong> and <strong>Session ID</strong></li>
+                <li>Verify all agents are healthy (green status indicators)</li>
+                <li>Click <strong>Start</strong> button</li>
+                <li>System will create unique recording ID and begin data acquisition</li>
+                <li>Your timer will begin counting</li>
+            </ol>
+
+            <h3>During Recording</h3>
+
+            <ul>
+                <li>Monitor live data visualization to verify sensor functionality</li>
+                <li>If switching conditions, click <strong>Condition</strong> to mark transition</li>
+                <li>System automatically synchronizes all streams</li>
+                <li>Timestamps are microsecond-level synchronized across all sensors</li>
+            </ul>
+
+            <h3>Stopping a Recording Session</h3>
+
+            <ol>
+                <li>Click <strong>Stop</strong> button</li>
+                <li>System finalizes HDF5 file and indexes data</li>
+                <li>Recording ID is stored for future reference</li>
+                <li>Data is immediately available for download/export</li>
+            </ol>
+
+            <div class="alert alert-warning">
+                <strong>Important:</strong> Do NOT power off crutches while recording. Always use Stop button to properly close data files.
+            </div>
+
+            <h2 id="download-export">Download & Export Data</h2>
+
+            <h3>Download HDF5 Format</h3>
+
+            <p>Native format containing all raw data:</p>
+            <pre><code># File structure
+subject_01_session_01_run_01.hdf5
+├── metadata/
+│   ├── subject_id
+│   ├── session_id
+│   └── timestamp
+└── data/
+    ├── tip_loadcell_left
+    ├── tip_loadcell_right
+    ├── handle_loadcell_left
+    ├── handle_loadcell_right
+    ├── ppg_left
+    ├── ppg_right
+    └── eye_tracker</code></pre>
+
+            <h3>Export to CSV</h3>
+
+            <p>Tabular format for analysis in Excel/Python:</p>
+            <ol>
+                <li>Navigate to Download tab</li>
+                <li>Select session(s)</li>
+                <li>Choose "Export as CSV"</li>
+                <li>Each sensor stream becomes separate CSV file</li>
+            </ol>
+
+            <h2 id="shutdown">Shutdown Sequence</h2>
+
+            <h3>Normal Shutdown</h3>
+
+            <ol>
+                <li>Complete all recordings (use Stop in web interface)</li>
+                <li>Disconnect eye tracker (optional)</li>
+                <li>Shutdown left crutch first: <code>sudo poweroff</code></li>
+                <li>Wait 5 seconds</li>
+                <li>Shutdown right crutch: <code>sudo poweroff</code></li>
+                <li>Wait 30 seconds before power removal</li>
+            </ol>
+
+            <h3>Emergency Shutdown</h3>
+
+            <p>If system becomes unresponsive:</p>
+            <ol>
+                <li>Force stop master web server: <code>sudo systemctl stop mads-web_server.service</code></li>
+                <li>Stop all agents: <code>sudo systemctl stop 'mads-*.service'</code></li>
+                <li>Power off: <code>sudo poweroff</code></li>
+            </ol>
+
+            <div class="alert alert-success">
+                <strong>Pro Tip:</strong> Always review the <a href="troubleshooting.html">Troubleshooting Guide</a> if any issues occur during acquisition.
+            </div>
+
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2024-2026 Instrumented Crutches Project</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+            document.querySelectorAll('nav a').forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === currentPage);
+            });
+        });
+    </script>
+</body>
+</html>
