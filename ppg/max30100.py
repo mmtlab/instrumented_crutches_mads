@@ -7,10 +7,7 @@
   September 2017
 """
 
-try:
-    import smbus
-except ImportError:
-    import smbus2 as smbus
+import smbus2 as smbus
 
 INT_STATUS   = 0x00  # Which interrupts are tripped
 INT_ENABLE   = 0x01  # Which interrupts are active
@@ -102,8 +99,12 @@ class MAX30100(object):
         # Default to the standard I2C bus on Pi.
         self.i2c = i2c if i2c else smbus.SMBus(1)
 
-        self.set_mode(MODE_HR)  # Trigger an initial temperature read.
+        self.set_mode(mode)  # Trigger an initial temperature read.
         self.set_led_current(led_current_red, led_current_ir)
+
+        sample_rate = _get_valid(SAMPLE_RATE, sample_rate)
+        pulse_width = _get_valid(PULSE_WIDTH, pulse_width)
+        
         self.set_spo_config(sample_rate, pulse_width)
 
         # Reflectance data (latest update)
@@ -129,7 +130,8 @@ class MAX30100(object):
 
     def set_mode(self, mode):
         reg = self.i2c.read_byte_data(I2C_ADDRESS, MODE_CONFIG)
-        self.i2c.write_byte_data(I2C_ADDRESS, MODE_CONFIG, reg & 0x74) # mask the SHDN bit
+        # Clear shutdown/reset/temperature bits, then apply the requested mode.
+        reg = reg & 0x74
         self.i2c.write_byte_data(I2C_ADDRESS, MODE_CONFIG, reg | mode)
 
     def set_spo_config(self, sample_rate=100, pulse_width=1600):

@@ -44,6 +44,7 @@ class PpgAgent:
 
         self.health_status_period = int(settings.get("health_status_period", 500))
         self.period = int(settings.get("period", 1))
+        print(f"PPG agent settings: pub_topic={self.pub_topic}, sub_topic={self.sub_topic}, health_status_period={self.health_status_period}ms, period={self.period}ms, options={options}")
 
         # Keep receive non-blocking enough to honor publish timers.
         receive_timeout_ms = max(10, min(self.health_status_period, self.period, 100))
@@ -54,8 +55,16 @@ class PpgAgent:
             options_dict = dict(opt.split("=", 1) for opt in options.split(",") if "=" in opt)
             self.side = options_dict.get("side", "unknown")
 
-        self.mx30 = max30100.MAX30100()
-        self.mx30.enable_spo2()
+        self.sensor_mode = max30100.MODE_HR
+        self.sensor_sample_rate = 100
+        self.sensor_led_current_red = 50.0
+        self.sensor_led_current_ir = 50.0
+        self.sensor_pulse_width = 1600
+        self.enable_spo2 = True
+
+        # Lazily initialize sensor only on start command.
+        self.mx30 = None
+        self._probe_sensor()
 
         # agent status tracking
         self.agent_status = AgentStatus.STARTUP
@@ -91,12 +100,55 @@ class PpgAgent:
     def start_recording(self):
         if self.agent_status == AgentStatus.RECORDING:
             return
+        self._start_sensor()
+        print("PPG sensor recording started")
         self.agent_status = AgentStatus.RECORDING
 
     def stop_recording(self):
-        if self.agent_status != AgentStatus.RECORDING:
-            return
+        self._stop_sensor()
+        print("PPG sensor recording stopped")
         self.agent_status = AgentStatus.IDLE
+
+    def _start_sensor(self):
+        if self.mx30 is not None:
+            return
+        self.mx30 = max30100.MAX30100(
+            mode=self.sensor_mode,
+            sample_rate=self.sensor_sample_rate,
+            led_current_red=self.sensor_led_current_red,
+            led_current_ir=self.sensor_led_current_ir,
+            pulse_width=self.sensor_pulse_width,
+        )
+        if self.enable_spo2:
+            self.mx30.enable_spo2()
+
+    def _probe_sensor(self):
+        probe = None
+        try:
+            probe = max30100.MAX30100(
+                mode=self.sensor_mode,
+                sample_rate=self.sensor_sample_rate,
+                led_current_red=self.sensor_led_current_red,
+                led_current_ir=self.sensor_led_current_ir,
+                pulse_width=self.sensor_pulse_width,
+            )
+            probe.enable_spo2()
+            probe.get_part_id()
+        finally:
+            if probe is not None:
+                try:
+                    probe.shutdown()
+                except Exception:
+                    pass
+            self.mx30 = None
+
+    def _stop_sensor(self):
+        if self.mx30 is None:
+            return
+        try:
+            self.mx30.shutdown()
+        finally:
+            self.mx30 = None
 
     def _process_command(self, topic, message):
         if not self._accept_all_topics and topic not in self._sub_topics_set:
@@ -111,9 +163,16 @@ class PpgAgent:
 
         cmd = str(cmd).lower()
         if cmd == "start":
-            self.start_recording()
+            try:
+                self.start_recording()
+            except Exception as exc:
+                self.agent_status = AgentStatus.IDLE
+                self._publish_metrics_and_status(ir=None, red=None, error=f"Failed to start sensor: {exc}", include_status=False)
         elif cmd == "stop":
-            self.stop_recording()
+            try:
+                self.stop_recording()
+            except Exception as exc:
+                self._publish_metrics_and_status(ir=None, red=None, error=f"Failed to stop sensor: {exc}", include_status=False)
 
     def run(self):
         """Main run loop: publish status/metrics and react to commands."""
@@ -134,6 +193,8 @@ class PpgAgent:
 
                 if self.agent_status == AgentStatus.RECORDING and now >= next_sample_ts:
                     try:
+                        if self.mx30 is None:
+                            raise RuntimeError("Sensor not initialized")
                         self.mx30.read_sensor()
                         self._publish_metrics_and_status(ir=self.mx30.ir, red=self.mx30.red, error=None, include_status=False)
                     except Exception as exc:
@@ -151,6 +212,7 @@ class PpgAgent:
         finally:
             self.agent_status = AgentStatus.SHUTDOWN
             try:
+                self._stop_sensor()
                 self._publish_metrics_and_status(ir=None, red=None, error="Agent shutting down", include_status=True)
             except Exception:
                 pass
