@@ -1,4 +1,4 @@
-# UPS HAT for MADS
+# UPS for MADS
 
 This is a Python agent for [MADS](https://github.com/MADS-NET/MADS). 
 
@@ -37,7 +37,7 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
-python ups_hat.py
+python ups.py
 ```
 
 Add `-s tcp:\\<broker-ip>:9092` to connect to a remote broker (default is `tcp:\\localhost:9092`).
@@ -58,8 +58,8 @@ Each published message contains:
 The plugin supports the following settings in the INI file:
 
 ```ini
-[ups_hat]
-pub_topic = "ups_hat"
+[ups]
+pub_topic = "ups"
 health_status_period = 500 # ms
 i2c_bus = 1
 i2c_address = 67 # decimal for 0x43

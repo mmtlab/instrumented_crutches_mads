@@ -51,9 +51,10 @@ The plugin supports the following settings in the INI file:
 
 ```ini
 [ppg]
+sub_topic = ["coordinator"]
 pub_topic = "ppg"
 health_status_period = 500 # ms
-period = 1 # ms, 100 Hz
+period = 10 # ms, 100 Hz
 side = "unknown"
 ```
 

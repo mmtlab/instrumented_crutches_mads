@@ -1,0 +1,29 @@
+#  __  __    _    ____  ____  
+# |  \/  |  / \  |  _ \/ ___| 
+# | |\/| | / _ \ | | | \___ \ 
+# | |  | |/ ___ \| |_| |___) |
+# |_|  |_/_/   \_\____/|____/ 
+#
+# Linux Systemd service file for mads-ppg, a mads-test agent
+# Notice that the settings file will be read from 
+# /usr/local/etc/mads.ini
+#
+# Save this file to /etc/systemd/system/mads-ppg.service
+# Or run "sudo mads service ppg test " 
+# then run "sudo systemctl enable mads-ppg.service"
+
+[Unit]
+Description=mads-ppg
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+WorkingDirectory=/home/crutch/instrumented_crutches_mads/ppg
+ExecStart=/home/crutch/instrumented_crutches_mads/ppg/venv/bin/python ppg.py -s tcp://10.42.0.1:9092 -o side=left
+
+[Install]
+WantedBy=multi-user.target

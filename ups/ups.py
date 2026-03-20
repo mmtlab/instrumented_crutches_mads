@@ -136,10 +136,10 @@ class INA219:
         return value * self._power_lsb
 
 
-class UpsHatAgent:
+class UpsAgent:
     def __init__(self, broker_url="tcp://localhost:9092", options="side=unknown"):
-        self.agent = Agent("ups_hat", broker_url)
-        self.agent.set_id("ups_hat")
+        self.agent = Agent("ups", broker_url)
+        self.agent.set_id("ups")
         self.agent.set_settings_timeout(2000)
         if self.agent.init() != 0:
             sys.stderr.write("Cannot contact broker\nCheck if the broker is running and the URL is correct.\n Check the mads.ini file.\n")
@@ -148,7 +148,7 @@ class UpsHatAgent:
 
         settings = self.agent.settings()
 
-        self.pub_topic = settings.get("pub_topic", "ups_hat")
+        self.pub_topic = settings.get("pub_topic", "ups")
         self.health_status_period = int(settings.get("health_status_period", 500))
         self.i2c_bus = int(settings.get("i2c_bus", 1))
         self.i2c_address = int(settings.get("i2c_address", 0x43))
@@ -354,7 +354,7 @@ class UpsHatAgent:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="UPS HAT MADS agent")
+    parser = argparse.ArgumentParser(description="UPS MADS agent")
     parser.add_argument("-s", "--server", default="tcp://localhost:9092",
                         help="Broker URL (default: tcp://localhost:9092)")
     parser.add_argument("-o", "--options", default="side=unknown",
@@ -364,12 +364,12 @@ def main():
     agent = None
     exit_code = 0
     try:
-        agent = UpsHatAgent(broker_url=args.server, options=args.options)
+        agent = UpsAgent(broker_url=args.server, options=args.options)
         agent.run()
     except KeyboardInterrupt:
         exit_code = 0
     except Exception as exc:
-        sys.stderr.write(f"Error running UpsHatAgent: {exc}\n")
+        sys.stderr.write(f"Error running UpsAgent: {exc}\n")
         exit_code = 1
     finally:
         if agent is not None:
