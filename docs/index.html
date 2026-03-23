@@ -7,29 +7,20 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <h1>Instrumented Crutches</h1>
-        <p>Real-time biomechanical and eye-tracking data acquisition system</p>
-        <p style="font-size: 14px; margin: 0;">Built on <a href="https://github.com/pbosetti/MADS" style="color: white; text-decoration: underline;">MADS</a> - Multi-Agent Distributed System</p>
-    </header>
-
     <nav>
         <ul>
             <li><a href="index.html" class="active">Home</a></li>
-            <li><a href="overview.html">Overview</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
             <li><a href="installation.html">Installation</a></li>
             <li><a href="usage.html">Usage Manual</a></li>
-            <li><a href="architecture.html">Architecture</a></li>
-            <li><a href="configuration.html">Configuration</a></li>
-            <li><a href="troubleshooting.html">Troubleshooting</a></li>
         </ul>
     </nav>
 
     <div class="container">
         <div class="content">
-            <h1>Welcome to Instrumented Crutches</h1>
+            <h1>Instrumented Crutches</h1>
 
-            <p>This system represents a comprehensive solution for collecting and analyzing real-time biomechanical data from instrumented crutches, integrated with eye-tracking technology for simultaneous gait and visual behavior analysis.</p>
+            <p>This system represents a comprehensive solution for collecting and analyzing biomechanical data from instrumented crutches, integrated with eye-tracking technology for simultaneous gait and visual behavior analysis.</p>
 
             <div class="alert alert-info">
                 <strong>Latest Version:</strong> Built on MADS 2.0.0 and above. This system requires Raspberry Pi Zero 2 W or similar platform.
@@ -43,7 +34,7 @@
             <div class="cards-grid">
                 <div class="card">
                     <h3>📊 Multi-Sensor Data Acquisition</h3>
-                    <p>Real-time collection from tip load cells, handle load cells, and inertial sensors on both crutches.</p>
+                    <p>Real-time collection from load cells in the tip and handle of both crutches.</p>
                 </div>
                 <div class="card">
                     <h3>👁️ Eye Tracking Integration</h3>
@@ -52,14 +43,6 @@
                 <div class="card">
                     <h3>♥️ Physiological Monitoring</h3>
                     <p>PPG (pulse oximetry) and heart rate monitoring via MAX30100 sensors.</p>
-                </div>
-                <div class="card">
-                    <h3>🔄 Distributed Processing</h3>
-                    <p>Modular agent-based architecture via MADS for flexible, scalable data pipelines.</p>
-                </div>
-                <div class="card">
-                    <h3>📈 Real-time Visualization</h3>
-                    <p>Web-based interface for live monitoring, calibration, and data acquisition control.</p>
                 </div>
                 <div class="card">
                     <h3>💾 HDF5 Data Storage</h3>
@@ -74,28 +57,15 @@
                 <li><strong>Slave crutch (left):</strong> Collects sensor data and communicates with master</li>
             </ul>
 
-            <p>All components communicate via the MADS message broker using a publish/subscribe pattern, enabling real-time synchronization and distributed processing.</p>
-
-            <h2>Quick Start</h2>
-            <ol>
-                <li><strong>Install</strong> MADS 2.0.0 and clone this repository</li>
-                <li><strong>Configure</strong> the <code>mads.ini</code> file with your sensor calibration values</li>
-                <li><strong>Install</strong> agents on both master and slave crutches</li>
-                <li><strong>Enable</strong> systemd services for automatic startup</li>
-                <li><strong>Access</strong> the web interface on <code>http://crutch-ip:8000</code></li>
-            </ol>
-            <p>See <a href="installation.html">Installation Guide</a> for detailed instructions.</p>
+            <p>All components communicate via the MADS message broker using a publish/subscribe pattern.</p>
 
             <h2>Documentation Sections</h2>
             <div class="toc">
                 <h4>📚 Available Documentation</h4>
                 <ul>
-                    <li><a href="overview.html">Project Overview</a> - System description and components</li>
+                    <li><a href="architecture.html">System Architecture</a> - Technical design and agent structure</li>
                     <li><a href="installation.html">Installation Guide</a> - Setup instructions for master and slave</li>
                     <li><a href="usage.html">Usage Manual</a> - Day-to-day operating instructions</li>
-                    <li><a href="architecture.html">System Architecture</a> - Technical design and agent structure</li>
-                    <li><a href="configuration.html">Configuration Reference</a> - Settings and calibration parameters</li>
-                    <li><a href="troubleshooting.html">Troubleshooting</a> - Common issues and solutions</li>
                 </ul>
             </div>
 
@@ -107,11 +77,11 @@
                 </tr>
                 <tr>
                     <td>Platform</td>
-                    <td>Raspberry Pi Zero 2 W (or equivalent ARM/Linux board)</td>
+                    <td>Raspberry Pi Zero 2 W</td>
                 </tr>
                 <tr>
                     <td>OS</td>
-                    <td>Raspberry Pi OS (Bookworm or later)</td>
+                    <td>Raspberry Pi OS</td>
                 </tr>
                 <tr>
                     <td>MADS</td>
@@ -123,13 +93,13 @@
                 </tr>
                 <tr>
                     <td>Storage</td>
-                    <td>microSD 64GB+ with fast write speed (UHS-II recommended)</td>
+                    <td>microSD 32GB+ with fast write speed (UHS-II recommended)</td>
                 </tr>
             </table>
 
             <h2>Supported Sensors</h2>
             <ul>
-                <li><strong>Load Cells:</strong> IPS9111 (tip and handle)</li>
+                <li><strong>Load Cells:</strong> Strain gauges with HX711 for tip and button load cells (FX292X-100A-XXX-L), and a high-precision AD HAT for the handle load cell</li>
                 <li><strong>PPG/Heart Rate:</strong> MAX30100 pulse oximeter</li>
                 <li><strong>Eye Tracking:</strong> Pupil Neon (via Wifi)</li>
                 <li><strong>Power:</strong> UPS HAT for Raspberry Pi</li>
@@ -145,7 +115,7 @@
     </div>
 
     <footer>
-        <p>&copy; 2024-2026 Instrumented Crutches Project. Built on <strong>MADS</strong> framework.</p>
+        <p>&copy; 2024-2026 Instrumented Crutches. Built on <strong>MADS</strong> framework.</p>
         <p>Documentation Last Updated: March 2026</p>
     </footer>
 

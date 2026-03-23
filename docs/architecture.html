@@ -7,20 +7,13 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <h1>Instrumented Crutches</h1>
-        <p>Real-time biomechanical and eye-tracking data acquisition system</p>
-    </header>
 
     <nav>
         <ul>
-            <li><a href="index.html">Home</a></li>
-            <li><a href="overview.html">Overview</a></li>
+            <li><a href="index.html" class="active">Home</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
             <li><a href="installation.html">Installation</a></li>
             <li><a href="usage.html">Usage Manual</a></li>
-            <li><a href="architecture.html" class="active">Architecture</a></li>
-            <li><a href="configuration.html">Configuration</a></li>
-            <li><a href="troubleshooting.html">Troubleshooting</a></li>
         </ul>
     </nav>
 
@@ -28,262 +21,15 @@
         <div class="content">
             <h1>System Architecture</h1>
 
-            <div class="toc">
-                <h4>🏗️ Architecture Topics</h4>
-                <ul>
-                    <li><a href="#agent-structure">Agent Structure</a></li>
-                    <li><a href="#data-pipeline">Data Pipeline</a></li>
-                    <li><a href="#communication-protocol">Communication Protocol</a></li>
-                    <li><a href="#synchronization">Time Synchronization</a></li>
-                    <li><a href="#storage-model">Storage Model</a></li>
-                </ul>
+            <div class="alert alert-warning">
+                <strong>Documentation Notice:</strong> This documentation was generated with GitHub Copilot and is currently under review and correction.
             </div>
-
-            <h2 id="agent-structure">Agent Structure</h2>
-
-            <p>The system is built on MADS (Multi-Agent Distributed System) framework. Each component runs as an independent agent:</p>
-
-            <h3>Master Crutch (Right) Agents</h3>
-            <table>
-                <tr>
-                    <th>Agent</th>
-                    <th>Role</th>
-                    <th>Language</th>
-                    <th>Port</th>
-                </tr>
-                <tr>
-                    <td>mads-broker</td>
-                    <td>Message hub, pub/sub router</td>
-                    <td>C++</td>
-                    <td>9092</td>
-                </tr>
-                <tr>
-                    <td>coordinator</td>
-                    <td>Session management, command dispatch</td>
-                    <td>C++</td>
-                    <td>custom</td>
-                </tr>
-                <tr>
-                    <td>tip_loadcell_right</td>
-                    <td>Right tip force sensing</td>
-                    <td>C++</td>
-                    <td>custom</td>
-                </tr>
-                <tr>
-                    <td>eye_tracker</td>
-                    <td>Pupil Neon eye gaze streaming</td>
-                    <td>Python</td>
-                    <td>custom</td>
-                </tr>
-                <tr>
-                    <td>ppg_right</td>
-                    <td>Right pulse oximetry (MAX30100)</td>
-                    <td>Python</td>
-                    <td>custom</td>
-                </tr>
-                <tr>
-                    <td>hdf5_writer</td>
-                    <td>Data persistence to disk</td>
-                    <td>C++</td>
-                    <td>custom</td>
-                </tr>
-                <tr>
-                    <td>web_server</td>
-                    <td>HTTP interface, real-time web UI</td>
-                    <td>Python (FastAPI)</td>
-                    <td>8000</td>
-                </tr>
-                <tr>
-                    <td>status_handler</td>
-                    <td>System health monitoring</td>
-                    <td>C++</td>
-                    <td>custom</td>
-                </tr>
-            </table>
-
-            <h3>Slave Crutch (Left) Agents</h3>
-            <table>
-                <tr>
-                    <th>Agent</th>
-                    <th>Role</th>
-                    <th>Language</th>
-                </tr>
-                <tr>
-                    <td>tip_loadcell_left</td>
-                    <td>Left tip force sensing</td>
-                    <td>C++</td>
-                </tr>
-                <tr>
-                    <td>ppg_left</td>
-                    <td>Left pulse oximetry (MAX30100)</td>
-                    <td>Python</td>
-                </tr>
-            </table>
-
-            <h2 id="data-pipeline">Data Pipeline</h2>
-
-            <h3>Sensor Data Flow</h3>
-
-            <pre><code>Hardware Sensor
-    ↓
-   ADC / I2C Interface
-    ↓
-   Agent (Read/Process)
-    ↓
-MADS Broker (Pub/Sub)
-    ↓
-   ├── Web Server (Real-time UI)
-    ├── HDF5 Writer (Storage)
-    └── Status Handler (Monitoring)
-    ↓
-   User (Download/Export)</code></pre>
-
-            <h3>Publisher/Subscriber Topics</h3>
-
-            <table>
-                <tr>
-                    <th>Topic</th>
-                    <th>Publisher</th>
-                    <th>Data Rate</th>
-                    <th>Format</th>
-                </tr>
-                <tr>
-                    <td>tip_loadcell_left</td>
-                    <td>tip_loadcell_left agent</td>
-                    <td>1000 Hz (configurable)</td>
-                    <td>JSON: {timestamp, force_N}</td>
-                </tr>
-                <tr>
-                    <td>tip_loadcell_right</td>
-                    <td>tip_loadcell_right agent</td>
-                    <td>1000 Hz</td>
-                    <td>JSON: {timestamp, force_N}</td>
-                </tr>
-                <tr>
-                    <td>handle_loadcell_left</td>
-                    <td>left crutch agent</td>
-                    <td>1000 Hz</td>
-                    <td>JSON: {timestamp, force_N}</td>
-                </tr>
-                <tr>
-                    <td>handle_loadcell_right</td>
-                    <td>right crutch agent</td>
-                    <td>1000 Hz</td>
-                    <td>JSON: {timestamp, force_N}</td>
-                </tr>
-                <tr>
-                    <td>ppg_left</td>
-                    <td>ppg_left agent</td>
-                    <td>25-100 Hz</td>
-                    <td>JSON: {timestamp, ir, red}</td>
-                </tr>
-                <tr>
-                    <td>ppg_right</td>
-                    <td>ppg_right agent</td>
-                    <td>25-100 Hz</td>
-                    <td>JSON: {timestamp, ir, red}</td>
-                </tr>
-                <tr>
-                    <td>eye_tracker</td>
-                    <td>eye_tracker agent</td>
-                    <td>200 Hz</td>
-                    <td>JSON: {timestamp, gaze_x, gaze_y, confidence}</td>
-                </tr>
-            </table>
-
-            <h2 id="communication-protocol">Communication Protocol</h2>
-
-            <h3>MADS Networking</h3>
-
-            <ul>
-                <li><strong>Protocol:</strong> ZeroMQ (ZMQ) with custom MADS framing</li>
-                <li><strong>Pattern:</strong> Publisher/Subscriber with request/reply</li>
-                <li><strong>Broker Role:</strong> Central message router at default port 9092</li>
-                <li><strong>Reliability:</strong> Best-effort delivery; re-connections handled automatically</li>
-            </ul>
-
-            <h3>Network Topology</h3>
-
-            <pre><code>┌─────────────────┐         Ethernet/WiFi         ┌─────────────────┐
-│  Master Crutch  │ ◄──────────────────────────►  │   Slave Crutch  │
-│   (Right)       │                               │    (Left)       │
-│                 │                               │                 │
-│  MADS Broker    │◄─────Sensor Data Streams─────┤  Sensor Agents  │
-│  (9092)         │                               │                 │
-│                 │                               │                 │
-│  Web Server     │                               │                 │
-│  (8000)         │◄──────Control  Commands──────┤                 │
-│                 │                               │                 │
-│  HDF5 Writer    │                               │                 │
-│ (Data Storage)  │                               │                 │
-└─────────────────┘                               └─────────────────┘</code></pre>
-
-            <h2 id="synchronization">Time Synchronization</h2>
-
-            <p>All timestamps are synchronized to microsecond precision:</p>
-
-            <ul>
-                <li><strong>Time Source:</strong> System clock on master, slave synchronizes via NTP or local calibration</li>
-                <li><strong>Timestamp Format:</strong> Unix epoch (seconds.microseconds)</li>
-                <li><strong>Synchronization Method:</strong> MADS broker provides common time reference</li>
-                <li><strong>Drift Compensation:</strong> Post-acquisition linear interpolation if drift detected</li>
-            </ul>
-
-            <h2 id="storage-model">Storage Model</h2>
-
-            <h3>HDF5 File Structure</h3>
-
-            <p>Data is organized hierarchically in HDF5 format:</p>
-
-            <pre><code>subject_01_session_01_run_01.hdf5
-│
-├── attributes/
-│   ├── subject_id: "subject_01"
-│   ├── session_id: "session_01"
-│   ├── acquisition_date: "2026-03-20"
-│   ├── start_timestamp: 1711000000.123456
-│   └── end_timestamp: 1711003600.654321
-│
-├── metadata/
-│   ├── master_ip: "10.42.0.1"
-│   ├── mads_version: "2.0.0"
-│   └── sensor_calibration/
-│       ├── tip_left_scale: 0.0125
-│       └── tip_right_scale: 0.0125
-│
-├── data/
-│   ├── tip_loadcell_left/
-│   │   ├── timestamp    [1M samples]
-│   │   └── force        [1M samples]
-│   ├── tip_loadcell_right/
-│   │   ├── timestamp    [1M samples]
-│   │   └── force        [1M samples]
-│   ├── ppg_left/
-│   │   ├── timestamp    [6M samples]
-│   │   ├── ir           [6M samples]
-│   │   └── red          [6M samples]
-│   └── eye_tracker/
-│       ├── timestamp    [1.2M samples]
-│       ├── gaze_x       [1.2M samples]
-│       ├── gaze_y       [1.2M samples]
-│       └── confidence   [1.2M samples]
-│
-└── conditions/
-    ├── timestamp        [segment markers]
-    └── condition_name   [walking, turning, balancing...]</code></pre>
-
-            <h3>File Naming Convention</h3>
-
-            <pre><code>subject_{subject_id}_session_{session_id}_run_{run_number}.hdf5
-
-Example:
-subject_P001_session_001_run_01.hdf5</code></pre>
-
         </div>
     </div>
 
+    
     <footer>
-        <p>&copy; 2024-2026 Instrumented Crutches Project</p>
+        <p>&copy; 2024-2026 Instrumented Crutches. Built on <strong>MADS</strong> framework.</p>
     </footer>
 
     <script>
