@@ -20,12 +20,9 @@ python -m http.server 8080
 ```
 docs/
 ├── index.html              # Landing page
-├── overview.html           # Project overview
+├── architecture.html      # System design
 ├── installation.html       # Installation guide
 ├── usage.html             # Operating manual
-├── architecture.html      # System design
-├── configuration.html     # Settings reference
-├── troubleshooting.html   # Problem solving
 ├── style.css             # Unified styling
 └── .nojekyll             # Disable Jekyll processing
 ```

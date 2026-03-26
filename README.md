@@ -64,3 +64,46 @@ Use the pre-configured service files in `templates/left` and `templates/right` f
 For the Python agent, check the paths in the service file and adapt them to the current configuration.
 
 All enabled services start their agents automatically at boot.
+
+
+### Configure network
+
+On the master crutch Raspberry Pi, create a Wi-Fi hotspot:
+
+```bash
+sudo nmcli device wifi hotspot ssid <network-name> password <network-password>
+```
+
+On the slave crutch Raspberry Pi, configure the connection to that hotspot and enable auto-connect:
+
+```bash
+sudo nmcli connection modify <connection-name> connection.autoconnect yes
+sudo nmcli connection up <connection-name>
+```
+
+
+### Configure NTP synchronization
+
+Install chrony by running:
+
+```bash
+sudo apt install chrony
+```
+
+Copy the configuration file to `/etc/chrony`:
+
+```bash
+sudo cp templates/chrony.conf /etc/chrony/
+```
+
+Enable and restart the service:
+
+```bash
+sudo systemctl enable chrony
+sudo systemctl restart chrony
+```
+
+Run this NTP configuration on both crutches.
+
+***Important note***: the NTP configuration file (`chrony.conf`) uses `10.42.0.1` as the default server IP.
+Check the master crutch hotspot IP address and update the file accordingly before copying it to `/etc/chrony/`.
