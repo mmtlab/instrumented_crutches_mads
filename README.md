@@ -107,3 +107,7 @@ Run this NTP configuration on both crutches.
 
 ***Important note***: the NTP configuration file (`chrony.conf`) uses `10.42.0.1` as the default server IP.
 Check the master crutch hotspot IP address and update the file accordingly before copying it to `/etc/chrony/`.
+
+
+## Acquisition board case
+You can find the acquisition board case STL files in the `templates/case` folder for 3D printing.
