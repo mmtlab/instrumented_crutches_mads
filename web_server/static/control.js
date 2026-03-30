@@ -368,10 +368,11 @@
         }
     }
 
-    function updateOffsetTimestamp() {
+    function updateOffsetTimestamp(timestamp) {
         if (!elements.offsetTime) return;
-        const now = new Date();
-        elements.offsetTime.textContent = now.toLocaleTimeString('it-IT', {
+        const parsed = timestamp ? new Date(timestamp) : null;
+        const value = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+        elements.offsetTime.textContent = value.toLocaleTimeString('it-IT', {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
@@ -429,18 +430,32 @@
 
         if (!container || !valueLabel || !fill || !eta) return;
 
+        // Check if battery is charging
+        const isCharging = batteryInfo && batteryInfo.charging === true;
         const hasPercent = batteryInfo && Number.isFinite(Number(batteryInfo.percent));
         const percent = hasPercent ? Math.max(0, Math.min(100, Number(batteryInfo.percent))) : null;
         const remaining = batteryInfo && batteryInfo.remaining_battery_time ? String(batteryInfo.remaining_battery_time) : '--:--';
 
+        if (isCharging) {
+            // Show charging state
+            valueLabel.textContent = '⚡';
+            fill.style.width = '100%';
+            eta.textContent = 'Charging';
+            container.classList.remove('battery-status-low', 'battery-status-mid', 'battery-status-high');
+            container.classList.add('battery-status-high');
+            return;
+        }
+
         if (percent === null) {
+            // Show unknown state
             valueLabel.textContent = '--.-%';
             fill.style.width = '0%';
             eta.textContent = 'ETA --:--';
             container.classList.remove('battery-status-low', 'battery-status-mid', 'battery-status-high');
             return;
         }
-
+        
+        // Normal state with valid percent
         valueLabel.textContent = `${percent.toFixed(1)}%`;
         fill.style.width = `${percent.toFixed(1)}%`;
         eta.textContent = `ETA ${remaining}`;
@@ -730,7 +745,7 @@
     }
     
     // Update offset display values
-    function updateOffsetDisplay(message, source, side) {
+    function updateOffsetDisplay(message, source, side, timestamp) {
         const text = (message || '').toString();
         const sourceNorm = (source || '').toString().toLowerCase().replace(/\.plugin$/, '');
         const targetSide = (side || getCrutchSideFromSource(sourceNorm) || '').toLowerCase();
@@ -753,7 +768,7 @@
                     valuesByLabel[group.backKey]
                 );
             });
-            updateOffsetTimestamp();
+            updateOffsetTimestamp(timestamp);
             return;
         }
 
@@ -763,7 +778,7 @@
 
         if (!Number.isFinite(value)) return;
         setTipOffsetValue(targetSide, value);
-        updateOffsetTimestamp();
+        updateOffsetTimestamp(timestamp);
     }
     
     // Format time as MM:SS
@@ -983,6 +998,12 @@
             
             if (data.status !== 'success') {
                 showFeedback(`⚠ ${data.message}`, 'warning');
+            } else {
+                // Reload offset values immediately after successful calibrate
+                // Give backend a small delay to process and update sensors
+                setTimeout(() => {
+                    loadAndUpdateStatusState();
+                }, 500);
             }
         } catch (error) {
             console.error('Set offset error:', error);
@@ -1180,7 +1201,7 @@
                     // Check if this is an offset message
                     const isOffsetMessage = isOffsetFeedbackMessage(text);
                     if (isOffsetMessage) {
-                        updateOffsetDisplay(text, source, msg.side || msg.topic);
+                        updateOffsetDisplay(text, source, msg.side || msg.topic, msg.timestamp || msg.timecode || '');
                         // Don't show the message as feedback, only update the display
                         return;
                     }
@@ -1253,8 +1274,12 @@
                 const {message, status: statusValue} = statusState.tip_loadcell_left;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('left', sensorStatus, statusValue);
-                if (isOffsetFeedbackMessage(message)) {
-                    updateOffsetDisplay(message, statusState.tip_loadcell_left.source, statusState.tip_loadcell_left.side);
+                const displayMessage = isOffsetFeedbackMessage(message) ? message : (statusState.tip_loadcell_left.last_offset_message || '');
+                const displayTimestamp = isOffsetFeedbackMessage(message)
+                    ? (statusState.tip_loadcell_left.timestamp || '')
+                    : (statusState.tip_loadcell_left.last_offset_timestamp || '');
+                if (displayMessage) {
+                    updateOffsetDisplay(displayMessage, statusState.tip_loadcell_left.source, statusState.tip_loadcell_left.side, displayTimestamp);
                 }
             }
 
@@ -1262,8 +1287,12 @@
                 const {message, status: statusValue} = statusState.handle_loadcell_left;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setHandleStatus('left', sensorStatus, statusValue);
-                if (isOffsetFeedbackMessage(message)) {
-                    updateOffsetDisplay(message, statusState.handle_loadcell_left.source, statusState.handle_loadcell_left.side);
+                const displayMessage = isOffsetFeedbackMessage(message) ? message : (statusState.handle_loadcell_left.last_offset_message || '');
+                const displayTimestamp = isOffsetFeedbackMessage(message)
+                    ? (statusState.handle_loadcell_left.timestamp || '')
+                    : (statusState.handle_loadcell_left.last_offset_timestamp || '');
+                if (displayMessage) {
+                    updateOffsetDisplay(displayMessage, statusState.handle_loadcell_left.source, statusState.handle_loadcell_left.side, displayTimestamp);
                 }
             }
 
@@ -1271,8 +1300,12 @@
                 const {message, status: statusValue} = statusState.tip_loadcell_right;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setTipStatus('right', sensorStatus, statusValue);
-                if (isOffsetFeedbackMessage(message)) {
-                    updateOffsetDisplay(message, statusState.tip_loadcell_right.source, statusState.tip_loadcell_right.side);
+                const displayMessage = isOffsetFeedbackMessage(message) ? message : (statusState.tip_loadcell_right.last_offset_message || '');
+                const displayTimestamp = isOffsetFeedbackMessage(message)
+                    ? (statusState.tip_loadcell_right.timestamp || '')
+                    : (statusState.tip_loadcell_right.last_offset_timestamp || '');
+                if (displayMessage) {
+                    updateOffsetDisplay(displayMessage, statusState.tip_loadcell_right.source, statusState.tip_loadcell_right.side, displayTimestamp);
                 }
             }
 
@@ -1280,8 +1313,12 @@
                 const {message, status: statusValue} = statusState.handle_loadcell_right;
                 const sensorStatus = deriveIndicatorStatus(statusValue);
                 setHandleStatus('right', sensorStatus, statusValue);
-                if (isOffsetFeedbackMessage(message)) {
-                    updateOffsetDisplay(message, statusState.handle_loadcell_right.source, statusState.handle_loadcell_right.side);
+                const displayMessage = isOffsetFeedbackMessage(message) ? message : (statusState.handle_loadcell_right.last_offset_message || '');
+                const displayTimestamp = isOffsetFeedbackMessage(message)
+                    ? (statusState.handle_loadcell_right.timestamp || '')
+                    : (statusState.handle_loadcell_right.last_offset_timestamp || '');
+                if (displayMessage) {
+                    updateOffsetDisplay(displayMessage, statusState.handle_loadcell_right.source, statusState.handle_loadcell_right.side, displayTimestamp);
                 }
             }
 

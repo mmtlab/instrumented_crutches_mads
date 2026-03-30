@@ -138,49 +138,45 @@ public:
         
     }
 
-    if (topic == "coordinator") {
-      // if the input contains a field that must be recorded, we need to continue
-      // Otherwise we need to retry to avoid saving the default field (timecode, timestamp, hostname) 
-      bool field_to_record_found = false;
-
-      for (const auto &keypath : _converter.keypaths("coordinator")) {
-        
-        // skip default fields
-        if (keypath == "timecode" || keypath == "timestamp" || keypath == "hostname") {
-          continue; 
-        }
-
-        if (input.contains(keypath)) {
-          field_to_record_found = true;
-          break;;
-        } 
-      }
-
-      if (!field_to_record_found) {
-        return return_type::retry;
-      }
+    // If the topic is not in the keypaths, we need to retry
+    if (std::find(_converter.groups().begin(), _converter.groups().end(), topic) == _converter.groups().end()) {
+      return return_type::retry;
     }
 
-    // Continue if it is not a command, if we are recording
-    if (_recording) {
-
-      // check if the topic is in the keypaths, if not, return an error, to avoid potential issues
-      if (std::find(_converter.groups().begin(), _converter.groups().end(), topic) == _converter.groups().end()) {
-        _error = "recording: topic '" + topic + "' not found in keypaths.";
-        cout << _error << std::endl;
-        return return_type::error;
+    // if the input contains a field that must be recorded, we need to continue
+    // Otherwise we need to retry to avoid saving the default field timestamp when there is no other field to record, which can lead to creating empty files or files with only default fields, which can be misleading and take up unnecessary space
+    bool field_to_record_found = false;
+    for (const auto &keypath : _converter.keypaths(topic)) {
+      
+      // skip default fields
+      if (keypath == "timestamp") {
+        continue; 
       }
+      
+      // check fields other than timestamp
+      if (input.contains(keypath)) {
+        field_to_record_found = true;
+        break;
+      } 
+    }
+
+    if (!field_to_record_found) {
+      return return_type::retry;
+    }
+
+    // recording is active, save the data to the file
+    if (_recording) {
 
       // save the data to the file
       try {
         _converter.save_to_group(input, topic);
       } catch (const std::exception &e) {
-        _error = "recording: error converting JSON to HDF5: " + string(e.what());
+        _error = "recording: " + string(e.what());
         cout << _error << std::endl;
         return return_type::error;
       }
-    }
-
+    } 
+    
     return return_type::success;
   }
 
@@ -202,7 +198,10 @@ public:
     if (elapsed >= _health_status_period) {
       out["agent_status"] = _recording ? "recording" : "idle";
       _last_health_status_time = now;
-    } 
+    } else {
+      return return_type::retry;
+    }
+    
     
     // This sets the agent_id field in the output json object, only when it is
     // not empty

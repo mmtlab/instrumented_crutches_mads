@@ -9,7 +9,7 @@
 # /usr/local/etc/mads.ini
 #
 # Save this file to /etc/systemd/system/mads-tip_loadcell.service
-# Or run "sudo mads service tip_loadcell filter -s tcp://10.42.0.1:9092 tip_loadcell.plugin -o side=right -b -n tip_loadcell_right " 
+# Or run "sudo mads service tip_loadcell filter -s tcp://10.42.0.1:9092 tip_loadcell.plugin -o side=left -b -n tip_loadcell_left " 
 # then run "sudo systemctl enable mads-tip_loadcell.service"
 
 [Unit]

@@ -22,7 +22,7 @@ public:
   // Constructors
   JsonToHdf5Converter() {
     H5Eset_auto2(H5E_DEFAULT, nullptr, nullptr); // Disable error auto-printing
-    // _keypaths = {"timecode", "timestamp", "hostname"};
+    // _keypaths = {"timestamp"};
   }
 
   JsonToHdf5Converter(const std::string &filename) : JsonToHdf5Converter() {
@@ -139,7 +139,7 @@ public:
   auto &append_keypath(std::string const &dataset_name,
                        std::string const &group_name) {
     if (_keypaths.find(group_name) == _keypaths.end()) {
-      _keypaths[group_name] = {"timecode", "timestamp"};
+      _keypaths[group_name] = {"timestamp"};
     }
     // Add dataset name to the list of data paths
     _keypaths[group_name].push_back(dataset_name);

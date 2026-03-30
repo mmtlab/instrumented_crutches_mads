@@ -225,21 +225,28 @@ public:
               }
             }
 
-            // handle battery status messages from ups_hat topic
-            if (input["info"].contains("percent") && source == "ups_hat") {
+            // handle battery status messages from ups topic
+            if (input["info"].contains("current") && input["info"].contains("percent") && source == "ups") {
               
-              // Format message like: "battery percent = 80.0%"
-              if (input["info"]["percent"].is_number()) {
+              if (input["info"]["current"].is_number() && input["info"]["percent"].is_number()) {
+                float current = input["info"]["current"].get<float>();
                 float battery_percent = input["info"]["percent"].get<float>();
-                std::ostringstream percent_str;
-                percent_str << std::fixed << std::setprecision(1) << battery_percent;
-                message = "battery percent: " + percent_str.str() + "%";
 
-                if (input["info"].contains("remaining_battery_time")) {
-                  if (input["info"]["remaining_battery_time"].is_string()) {
-                    string battery_remaining_time = input["info"]["remaining_battery_time"].get<string>();
-                    message += ", remaining time: " + battery_remaining_time;
+                // if current is negative, it means that the battery is feeding the raspberry
+                // if current is positive, it means that the battery is charging
+                if (current < 0) {
+                  std::ostringstream percent_str;
+                  percent_str << std::fixed << std::setprecision(1) << battery_percent;
+                  message = "battery percent: " + percent_str.str() + "%";
+
+                  if (input["info"].contains("remaining_battery_time")) {
+                    if (input["info"]["remaining_battery_time"].is_string()) {
+                      string battery_remaining_time = input["info"]["remaining_battery_time"].get<string>();
+                      message += ", remaining time: " + battery_remaining_time;
+                    }
                   }
+                } else {
+                  message = "Battery is charging";
                 }
 
               } else {

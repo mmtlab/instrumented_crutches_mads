@@ -31,6 +31,15 @@ Check the `mads.ini` configuration (i.e. the tip load cells' scaling factors) an
 sudo cp templates/mads.ini /usr/local/etc/
 ```
 
+***Note***: provide write permissions to the data folder used by `web_server` and `hdf5_writer` (by default `web_server/data`), otherwise startup can fail.
+
+If needed, fix ownership/permissions with:
+
+```bash
+sudo chown -R $USER:$USER ~/instrumented_crutches_mads/web_server/data
+chmod -R u+rwX ~/instrumented_crutches_mads/web_server/data
+```
+
 ### Enable services
 
 Enable services according to the crutch role.
@@ -38,25 +47,25 @@ Enable services according to the crutch role.
 On the master crutch (i.e. right crutch), copy the service files to `/etc/systemd/system`:
 
 ```bash
-sudo cp templates/mads-broker.service templates/mads-web_server.service templates/mads-coordinator.service templates/mads-status_handler.service templates/mads-hdf5_writer.service templates/mads-eye_tracker.service templates/mads-network_handler.service templates/right/mads-tip_loadcell.service templates/right/mads-ups.service templates/right/mads-ppg.service /etc/systemd/system/
+sudo cp templates/mads-broker.service templates/mads-web_server.service templates/mads-coordinator.service templates/mads-status_handler.service templates/mads-hdf5_writer.service templates/mads-eye_tracker.service templates/mads-network_handler.service templates/right/mads-tip_loadcell.service templates/right/mads-handle_loadcell.service templates/right/mads-ups.service templates/right/mads-ppg.service /etc/systemd/system/
 ```
 
 Then enable them:
 
 ```bash
-sudo systemctl enable mads-broker.service mads-web_server.service mads-coordinator.service mads-status_handler.service mads-hdf5_writer.service mads-tip_loadcell.service mads-eye_tracker.service mads-network_handler.service mads-ups.service mads-ppg.service
+sudo systemctl enable mads-broker.service mads-web_server.service mads-coordinator.service mads-status_handler.service mads-hdf5_writer.service mads-tip_loadcell.service mads-handle_loadcell.service mads-eye_tracker.service mads-network_handler.service mads-ups.service mads-ppg.service
 ```
 
 On the slave crutch (i.e. left crutch), copy the service file to `/etc/systemd/system`:
 
 ```bash
-sudo cp templates/left/mads-tip_loadcell.service templates/left/mads-ups.service templates/left/mads-ppg.service /etc/systemd/system/
+sudo cp templates/left/mads-tip_loadcell.service templates/left/mads-handle_loadcell.service templates/left/mads-ups.service templates/left/mads-ppg.service /etc/systemd/system/
 ```
 
 Then enable it:
 
 ```bash
-sudo systemctl enable mads-tip_loadcell.service mads-ups.service mads-ppg.service
+sudo systemctl enable mads-tip_loadcell.service mads-handle_loadcell.service mads-ups.service mads-ppg.service
 ```
 
 Use the pre-configured service files in `templates/left` and `templates/right` for the correct crutch side.

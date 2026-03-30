@@ -1,0 +1,28 @@
+#  __  __    _    ____  ____  
+# |  \/  |  / \  |  _ \/ ___| 
+# | |\/| | / _ \ | | | \___ \ 
+# | |  | |/ ___ \| |_| |___) |
+# |_|  |_/_/   \_\____/|____/ 
+#
+# Linux Systemd service file for mads-handle_loadcell, a mads-filter agent
+# Notice that the settings file will be read from 
+# /usr/local/etc/mads.ini
+#
+# Save this file to /etc/systemd/system/mads-handle_loadcell.service
+# Or run "sudo mads service handle_loadcell filter -s tcp://10.42.0.1:9092 handle_loadcell.plugin -o side=right -b -n handle_loadcell_right " 
+# then run "sudo systemctl enable mads-handle_loadcell.service"
+
+[Unit]
+Description=mads-handle_loadcell
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=/usr/local/bin/mads-filter -s tcp://10.42.0.1:9092 handle_loadcell.plugin -o side=right -b 
+
+[Install]
+WantedBy=multi-user.target

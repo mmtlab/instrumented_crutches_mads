@@ -136,14 +136,30 @@ def check_status_messages():
                 
                 # Update status state - track last status for each source
                 source_key = get_status_source_key(source)
+                current_message = payload.get("message", "")
+                is_offset_message = bool(current_message and "offset test:" in current_message.lower())
+                
+                # Preserve last offset message across status updates
+                old_state = status_state.get(source_key, {})
+                old_offset_msg = old_state.get("last_offset_message", "")
+                old_offset_ts = old_state.get("last_offset_timestamp")
+                
                 status_state[source_key] = {
                     "source": source,
                     "side": payload_side,
                     "level": payload.get("level", "info"),
-                    "message": payload.get("message", ""),
+                    "message": current_message,
                     "status": payload.get("status", ""),
                     "timestamp": payload.get("timestamp")
                 }
+                
+                # Keep last_offset_message alive if current message is offset, or preserve old one
+                if is_offset_message:
+                    status_state[source_key]["last_offset_message"] = current_message
+                    status_state[source_key]["last_offset_timestamp"] = payload.get("timestamp")
+                elif old_offset_msg:
+                    status_state[source_key]["last_offset_message"] = old_offset_msg
+                    status_state[source_key]["last_offset_timestamp"] = old_offset_ts
 
                 battery_info = parse_battery_info(payload)
                 if battery_info:
@@ -192,10 +208,14 @@ def parse_battery_info(payload: dict) -> dict:
         return {}
 
     message = str(payload.get("message", "") or "")
-    if "battery percent" not in message.lower():
+    if "battery percent" not in message.lower() and "charging" not in message.lower():
         return {}
 
     result = {}
+    
+    # Check for charging state
+    if re.search(r"battery\s+is\s+charging", message, flags=re.IGNORECASE):
+        result["charging"] = True
 
     percent_match = re.search(
         r"battery\s+percent\s*:\s*(-?\d+(?:\.\d+)?)\s*%",
@@ -1791,9 +1811,9 @@ async def get_status_state():
         
         if "coordinator" in source_lower or "controller" in source_lower:
             organized_state["coordinator"] = status_view
-        elif "ups_hat" in source_lower or "battery" in source_lower:
+        elif "ups" in source_lower or "battery" in source_lower:
             side = (status_view.get("side") or "").lower()
-            has_battery_data = status_view.get("percent") is not None
+            has_battery_data = status_view.get("percent") is not None or status_view.get("charging") is True
             if side == "left" and has_battery_data:
                 organized_state["battery_left"] = status_view
             elif side == "right" and has_battery_data:

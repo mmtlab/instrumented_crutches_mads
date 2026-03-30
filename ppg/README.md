@@ -24,7 +24,7 @@ Currently, the supported platforms are:
 
 # System packages (Raspberry Pi / Debian)
 sudo apt-get update
-sudo apt-get install -y python3-pip python3-smbus i2c-tools
+sudo apt-get install -y python3-smbus i2c-tools
 
 # Create and activate venv (recommended)
 python -m venv venv
