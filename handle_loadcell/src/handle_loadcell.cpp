@@ -204,21 +204,6 @@ public:
     // If there is a message to send, we must send the crutch side
     out["side"] = _side;
 
-    const auto process_end = std::chrono::steady_clock::now();
-    _last_process_ms = std::chrono::duration_cast<std::chrono::microseconds>(process_end - process_start).count() / 1000.0;
-    if (_last_process_time.time_since_epoch().count() != 0) {
-      _last_cycle_ms = std::chrono::duration_cast<std::chrono::microseconds>(process_end - _last_process_time).count() / 1000.0;
-    }
-    _last_process_time = process_end;
-
-    if (elapsed >= _health_status_period) {
-      out["perf"]["adc_read_ms"] = _last_adc_read_ms;
-      out["perf"]["process_ms"] = _last_process_ms;
-      out["perf"]["cycle_ms"] = _last_cycle_ms;
-      out["perf"]["adc1_rate"] = _adc1_rate;
-      out["perf"]["channels"] = static_cast<int>(_channel_list.size());
-    }
-
     // This sets the agent_id field in the output json object, only when it is
     // not empty
     if (!_agent_id.empty()) out["agent_id"] = _agent_id;
@@ -383,11 +368,6 @@ private:
   std::chrono::steady_clock::time_point _last_health_status_time = std::chrono::steady_clock::now();
   unsigned long long _process_cycles = 0; // I dont know way, but without this counter the agent blocks after one process cycle
   int _adc1_rate = 7;
-
-  double _last_adc_read_ms = 0.0;
-  double _last_process_ms = 0.0;
-  double _last_cycle_ms = 0.0;
-  std::chrono::steady_clock::time_point _last_process_time{};
 
   array<uint8_t, 8> _channel_list{0, 1, 2, 3, 4, 5, 6, 7};
   map<int, string> _input_map{

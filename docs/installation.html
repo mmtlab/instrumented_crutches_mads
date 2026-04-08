@@ -21,9 +21,74 @@
         <div class="content">
             <h1>Installation Guide</h1>
 
-            <div class="alert alert-warning">
-                <strong>Documentation Notice:</strong> This documentation was generated with GitHub Copilot and is currently under review and correction.
+            <p>This page summarizes the installation flow from the main repository README and adds direct links to each agent README.</p>
+
+            <h2>1. Clone Repository</h2>
+            <pre><code>git clone https://github.com/mmtlab/instrumented_crutches_mads.git
+cd instrumented_crutches_mads</code></pre>
+
+            <div class="alert alert-info">
+                <strong>Required MADS version:</strong> 2.0.0 or above.
             </div>
+
+            <h2>2. Build and Install Agents</h2>
+            <p>Each agent is installed separately. Build only the services required by each crutch role:</p>
+            <ul>
+                <li><strong>Master crutch (right):</strong> web_server, coordinator, status_handler, hdf5_writer, eye_tracker, tip_loadcell, handle_loadcell, ppg, ups</li>
+                <li><strong>Slave crutch (left):</strong> tip_loadcell, handle_loadcell, ppg, ups</li>
+            </ul>
+
+            <h2>3. Configure mads.ini</h2>
+            <p>Review settings (for example loadcell scaling values), then copy the template configuration:</p>
+            <pre><code>sudo cp templates/mads.ini /usr/local/etc/</code></pre>
+            <p>Ensure write permissions for the data folder used by web_server and hdf5_writer (default: <code>web_server/data</code>):</p>
+            <pre><code>sudo chown -R $USER:$USER ~/instrumented_crutches_mads/web_server/data
+chmod -R u+rwX ~/instrumented_crutches_mads/web_server/data</code></pre>
+
+            <h2>4. Enable Services</h2>
+            <p>Copy and enable systemd service files according to the crutch role.</p>
+
+            <h3>Master Crutch (Right)</h3>
+            <pre><code>sudo cp templates/mads-broker.service templates/mads-web_server.service templates/mads-coordinator.service templates/mads-status_handler.service templates/mads-hdf5_writer.service templates/mads-eye_tracker.service templates/mads-network_handler.service templates/right/mads-tip_loadcell.service templates/right/mads-handle_loadcell.service templates/right/mads-ups.service templates/right/mads-ppg.service /etc/systemd/system/
+sudo systemctl enable mads-broker.service mads-web_server.service mads-coordinator.service mads-status_handler.service mads-hdf5_writer.service mads-tip_loadcell.service mads-handle_loadcell.service mads-eye_tracker.service mads-network_handler.service mads-ups.service mads-ppg.service</code></pre>
+
+            <h3>Slave Crutch (Left)</h3>
+            <pre><code>sudo cp templates/left/mads-tip_loadcell.service templates/left/mads-handle_loadcell.service templates/left/mads-ups.service templates/left/mads-ppg.service /etc/systemd/system/
+sudo systemctl enable mads-tip_loadcell.service mads-handle_loadcell.service mads-ups.service mads-ppg.service</code></pre>
+
+            <p>Use the service templates in <code>templates/left</code> and <code>templates/right</code> for correct side-specific setup.</p>
+
+            <h2>5. Configure Network</h2>
+            <p>On the master Raspberry Pi, create a hotspot:</p>
+            <pre><code>sudo nmcli device wifi hotspot ssid &lt;network-name&gt; password &lt;network-password&gt;</code></pre>
+            <p>On the slave Raspberry Pi, configure auto-connect to that hotspot:</p>
+            <pre><code>sudo nmcli connection modify &lt;connection-name&gt; connection.autoconnect yes
+sudo nmcli connection up &lt;connection-name&gt;</code></pre>
+
+            <h2>6. Configure Time Synchronization (Chrony)</h2>
+            <pre><code>sudo apt install chrony
+sudo cp templates/chrony.conf /etc/chrony/
+sudo systemctl enable chrony
+sudo systemctl restart chrony</code></pre>
+            <p>Run this on both crutches. The default <code>chrony.conf</code> uses <code>10.42.0.1</code> as NTP server; update it if your hotspot IP differs.</p>
+
+            <h2>Agent README Links</h2>
+            <p>Use the following README files for per-agent build and runtime details:</p>
+            <ul>
+                <li><a href="../README.md">Main repository README</a></li>
+                <li><a href="../web_server/README.md">web_server/README.md</a></li>
+                <li><a href="../coordinator/README.md">coordinator/README.md</a></li>
+                <li><a href="../status_handler/README.md">status_handler/README.md</a></li>
+                <li><a href="../hdf5_writer/README.md">hdf5_writer/README.md</a></li>
+                <li><a href="../eye_tracker/README.md">eye_tracker/README.md</a></li>
+                <li><a href="../tip_loadcell/README.md">tip_loadcell/README.md</a></li>
+                <li><a href="../handle_loadcell/README.md">handle_loadcell/README.md</a></li>
+                <li><a href="../ppg/README.md">ppg/README.md</a></li>
+                <li><a href="../ups/README.md">ups/README.md</a></li>
+            </ul>
+
+            <h2>Case Files</h2>
+            <p>Acquisition board case STL files are available in <code>templates/case</code>.</p>
 
         </div>
     </div>

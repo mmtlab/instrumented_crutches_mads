@@ -31,332 +31,108 @@
                 <li><strong>Master-only services:</strong> Web Server, Coordinator, Status Handler, HDF5 Writer, Eye Tracker.</li>
                 <li><strong>Services on both crutches:</strong> Tip Loadcell, Handle Loadcell, PPG, UPS.</li>
             </ul>
-
-            <h2>Agent Details</h2>
-            <p>Tables are ordered by deployment role and follow the requested columns.</p>
-
-            <h3>Master-only agents</h3>
-            <table>
-                <tr>
-                    <th>Agent name</th>
-                    <th>Agent type</th>
-                    <th>Role</th>
-                    <th>Accepted command</th>
-                    <th>Other sub_topic entries</th>
-                    <th>JSON output format and pub_topic</th>
-                    <th>Default INI parameters</th>
-                </tr>
-                <tr>
-                    <td>Web Server</td>
-                    <td>Filter</td>
-                    <td>FastAPI backend and UI host. Manages acquisitions, test metadata, comments, conditions, plotting, and CSV download.</td>
-                    <td>
-                        <ul>
-                            <li>Generates commands: <code>start</code>, <code>stop</code>, <code>set_offset</code>, <code>get_agents_status</code>, <code>datetime_update</code>, <code>condition</code>, <code>pupil_neon_connect</code>, <code>pupil_neon_disconnect</code></li>
-                            <li>No internal parser for coordinator command stream</li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["status"]</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Publishes MADS commands as <code>{"command":..., ...}</code></li>
-                            <li><code>pub_topic="ws_command"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["status"]</code></li>
-                            <li><code>pub_topic="ws_command"</code></li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Coordinator</td>
-                    <td>Filter</td>
-                    <td>Command router and state gate. Validates transitions and forwards normalized commands to all agents.</td>
-                    <td>
-                        <ul>
-                            <li><code>start</code>, <code>stop</code>, <code>condition</code>, <code>datetime_update</code></li>
-                            <li><code>get_agents_status</code>, <code>set_offset</code></li>
-                            <li><code>pupil_neon_connect</code>, <code>pupil_neon_disconnect</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>No extra sub_topic beyond <code>sub_topic=["ws_command"]</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Command fan-out: <code>{"command":..., "id"?:n, "label"?:s, "subject_id"?:n, "session_id"?:n}</code></li>
-                            <li>Heartbeat: <code>{"agent_status":"idle|recording"}</code></li>
-                            <li><code>pub_topic="coordinator"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["ws_command"]</code></li>
-                            <li><code>pub_topic="coordinator"</code></li>
-                            <li><code>period=10</code></li>
-                            <li><code>health_status_period=500</code> ms</li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Status Handler</td>
-                    <td>Filter</td>
-                    <td>Status normalizer and aggregator. Combines agent events and health payloads into a unified status stream.</td>
-                    <td>
-                        <ul>
-                            <li><code>get_agents_status</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>agent_event</code></li>
-                            <li>Configured monitored topics (template: coordinator, ups, hdf5_writer, tip_loadcell, handle_loadcell, ppg, pupil_neon)</li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>{"status":{"source","level","status","message","side"?}}</code></li>
-                            <li><code>pub_topic="status"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>pub_topic="status"</code></li>
-                            <li><code>unreachable_agent_timeout=3000</code> ms (template often 6000)</li>
-                            <li><code>max_pending=100</code></li>
-                            <li><code>debug=false</code></li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>HDF5 Writer</td>
-                    <td>Filter</td>
-                    <td>HDF5 logger. During recording, appends configured keypaths to topic groups and finalizes files on stop.</td>
-                    <td>
-                        <ul>
-                            <li><code>start</code></li>
-                            <li><code>stop</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Sensor/status topics configured in <code>sub_topic</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Health payload: <code>{"agent_status":"idle|recording"}</code></li>
-                            <li>Data side effect: HDF5 datasets written from input topics</li>
-                            <li><code>pub_topic="hdf5_writer"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>folder_path="./fallback_data/"</code> in code (template overrides)</li>
-                            <li><code>keypath_sep="."</code></li>
-                            <li><code>keypaths={...}</code> required</li>
-                            <li><code>health_status_period=500</code> ms</li>
-                            <li><code>pub_topic="hdf5_writer"</code></li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Eye Tracker (pupil_neon)</td>
-                    <td>Filter</td>
-                    <td>Pupil Neon integration: device discovery/connection, recording control, condition events, and time-sync metrics.</td>
-                    <td>
-                        <ul>
-                            <li><code>pupil_neon_connect</code></li>
-                            <li><code>start</code></li>
-                            <li><code>condition</code></li>
-                            <li><code>stop</code></li>
-                            <li><code>pupil_neon_disconnect</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["coordinator"]</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Status/error payload: <code>{"agent_status":...,"error"?:...}</code></li>
-                            <li>Sync payload: <code>time_offset_ms_*</code>, <code>roundtrip_duration_ms_*</code></li>
-                            <li><code>pub_topic="pupil_neon"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["coordinator"]</code></li>
-                            <li><code>pub_topic="pupil_neon"</code></li>
-                            <li><code>health_status_period=500</code> ms</li>
-                            <li>CLI: <code>-s/--server</code></li>
-                        </ul>
-                    </td>
-                </tr>
-            </table>
-
-            <h3>Agents deployed on both crutches</h3>
-            <table>
-                <tr>
-                    <th>Agent name</th>
-                    <th>Agent type</th>
-                    <th>Role</th>
-                    <th>Accepted command</th>
-                    <th>Other sub_topic entries</th>
-                    <th>JSON output format and pub_topic</th>
-                    <th>Default INI parameters</th>
-                </tr>
-                <tr>
-                    <td>Tip Loadcell</td>
-                    <td>Filter</td>
-                    <td>HX711-based tip force acquisition with side-specific scale and offset handling.</td>
-                    <td>
-                        <ul>
-                            <li><code>start</code></li>
-                            <li><code>stop</code></li>
-                            <li><code>set_offset</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>No extra sub_topic beyond <code>sub_topic=["coordinator"]</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Recording: <code>{"force":n,"side":"left|right"}</code></li>
-                            <li>Health: <code>{"agent_status":"idle|recording","side":...}</code></li>
-                            <li>Offset feedback: <code>{"info":{"offset":{"value":n,"test":n}},"side":...}</code></li>
-                            <li><code>pub_topic="tip_loadcell"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["coordinator"]</code>, <code>pub_topic="tip_loadcell"</code></li>
-                            <li><code>datapin=6</code>, <code>clockpin=26</code></li>
-                            <li><code>period=10</code></li>
-                            <li><code>health_status_period=500</code> ms</li>
-                            <li><code>side="unknown"</code> (must become left/right at runtime)</li>
-                            <li><code>scaling.left/right</code></li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Handle Loadcell</td>
-                    <td>Filter</td>
-                    <td>8-channel ADS1263 handle-force acquisition with channel map, range conversion, and offset calibration.</td>
-                    <td>
-                        <ul>
-                            <li><code>start</code></li>
-                            <li><code>stop</code></li>
-                            <li><code>set_offset</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>No extra sub_topic beyond <code>sub_topic=["coordinator"]</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Recording: <code>{"force":{"up_front":...,...},"side":"left|right"}</code></li>
-                            <li>Health/perf: <code>{"agent_status":...,"perf":{"adc_read_ms","process_ms","cycle_ms","adc1_rate","channels"}}</code></li>
-                            <li>Offset feedback: <code>{"info":{"offset":{"value":{...},"test":{...}}},"side":...}</code></li>
-                            <li><code>pub_topic="handle_loadcell"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["coordinator"]</code>, <code>pub_topic="handle_loadcell"</code></li>
-                            <li><code>period=20</code></li>
-                            <li><code>ref_voltage=4.12</code></li>
-                            <li><code>adc1_rate=7</code> in code (template often 9)</li>
-                            <li><code>health_status_period=500</code> ms</li>
-                            <li><code>side="unknown"</code></li>
-                            <li><code>input_map</code>, <code>range_map.left/right</code></li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>PPG</td>
-                    <td>Filter</td>
-                    <td>MAX30100-based PPG acquisition; publishes IR/RED samples while recording plus status heartbeat.</td>
-                    <td>
-                        <ul>
-                            <li><code>start</code></li>
-                            <li><code>stop</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>No extra sub_topic beyond <code>sub_topic=["coordinator"]</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>Health: <code>{"agent_status":...,"side":...}</code></li>
-                            <li>Samples: <code>{"side":...,"ir":n,"red":n}</code></li>
-                            <li>Error: optional <code>"error"</code></li>
-                            <li><code>pub_topic="ppg"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>sub_topic=["coordinator"]</code>, <code>pub_topic="ppg"</code></li>
-                            <li><code>health_status_period=500</code> ms</li>
-                            <li><code>period=1</code> ms in code (template often 10)</li>
-                            <li><code>side="unknown"</code></li>
-                            <li>CLI: <code>-s/--server</code>, <code>-o/--options</code></li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>UPS</td>
-                    <td>Source</td>
-                    <td>INA219 power monitor; computes battery percentage and estimated remaining time and publishes periodic telemetry.</td>
-                    <td>
-                        <ul>
-                            <li>None</li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li>No command sub_topic used in runtime loop</li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>{"agent_status":"idle","side":...,"info":{"voltage","current","power","percent","remaining_battery_time"}}</code></li>
-                            <li><code>pub_topic="ups"</code></li>
-                        </ul>
-                    </td>
-                    <td>
-                        <ul>
-                            <li><code>pub_topic="ups"</code></li>
-                            <li><code>health_status_period=500</code> ms in code (template often 5000)</li>
-                            <li><code>i2c_bus=1</code>, <code>i2c_address=67</code></li>
-                            <li><code>battery_empty_voltage=3.0</code>, <code>battery_full_voltage=4.2</code></li>
-                            <li>CLI: <code>-s/--server</code>, <code>-o/--options</code></li>
-                        </ul>
-                    </td>
-                </tr>
-            </table>
+            
+            <h2>System Diagram</h2>
+            <p><img src="architecture-diagram.svg" alt="Instrumented Crutches architecture diagram" style="width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px;"></p>
+            <p><a href="architecture-diagram.svg" target="_blank" rel="noopener noreferrer">Open diagram in a new tab</a></p>
 
             <h2>Data Flow</h2>
             <p>The Web Server issues commands to the Coordinator through the MADS broker. The Coordinator drives the sensing agents, the Status Handler reports the live health of the system, and the HDF5 Writer persists the data streams that are later consumed by the visualization and download tools.</p>
 
-            <h2>System Diagram</h2>
-            <p><img src="architecture-diagram.svg" alt="Instrumented Crutches architecture diagram" style="width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px;"></p>
-            <p><a href="architecture-diagram.svg" target="_blank" rel="noopener noreferrer">Open diagram in a new tab</a></p>
+            <h2>Agent Details</h2>
+            <p>Each agent is shown in its own transposed table for readability.</p>
+
+            <h3>Master-only agents</h3>
+
+            <table>
+                <tr><th>web_server</th><th> </th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>FastAPI backend and UI host. Manages acquisitions, test metadata, comments, conditions, plotting, and CSV download.</td></tr>
+                <tr><td>Sub topics</td><td><code>status</code></td></tr>
+                <tr><td>Pub topics</td><td><code>ws_command</code></td></tr>
+                <tr><td>JSON output format</td><td><code>{"command": "...", ...}</code> with allowed values for <code>command</code>: <code>start</code>, <code>stop</code>, <code>set_offset</code>, <code>get_agents_status</code>, <code>datetime_update</code>, <code>condition</code>, <code>pupil_neon_connect</code>, <code>pupil_neon_disconnect</code></li></ul></td></tr>
+            </table>
+
+            <table>
+                <tr><th>coordinator</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>Command router and state gate. Validates transitions and forwards normalized commands to all agents.</td></tr>
+                <tr><td>Sub topics</td><td><code>ws_command</code></td></tr>
+                <tr><td>Accepted command</td><td><ul><li><code>start</code>, <code>stop</code>, <code>condition</code>, <code>datetime_update</code></li><li><code>get_agents_status</code>, <code>set_offset</code></li><li><code>pupil_neon_connect</code>, <code>pupil_neon_disconnect</code></li></ul></td></tr>
+                <tr><td>Pub topics</td><td><code>coordinator</code></td></tr>
+                <tr><td>JSON output format</td><td><ul><li>Command: <code>{"command":..., "id"?:n, "label"?:s, "subject_id"?:n, "session_id"?:n}</code></li><li>Heartbeat: <code>{"agent_status":"idle|recording"}</code></li></ul></td></tr>
+            </table>
+
+            <table>
+                <tr><th>status_handler</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>Status aggregator and normalizer. It merges agent events and health messages into a single stream and marks agents unreachable after a timeout.</td></tr>
+                <tr><td>Sub topics</td><td><ul><li><code>agent_event</code></li><li><code>coordinator</code></li><li><code>ups</code></li><li><code>hdf5_writer</code></li><li><code>tip_loadcell</code></li><li><code>handle_loadcell</code></li><li><code>ppg</code></li><li><code>pupil_neon</code></li></ul></td></tr>
+                <tr><td>Accepted command</td><td><code>get_agents_status</code></td></tr>
+                <tr><td>Pub topics</td><td><code>status</code></td></tr>
+                <tr><td>JSON output format</td><td><code>{"status":{"source","level","status","message","side"?}}</code></td></tr>
+            </table>
+
+            <table>
+                <tr><th>hdf5_writer</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>HDF5 logger. During recording, appends configured keypaths to topic groups and finalizes files on stop.</td></tr>
+                <tr><td>Sub topics</td><td><ul><li><code>coordinator</code></li><li><code>tip_loadcell</code></li><li><code>handle_loadcell</code></li><li><code>ppg</code></li><li><code>pupil_neon</code></li><li><code>ups</code></li></ul></td></tr>
+                <tr><td>Accepted command</td><td><ul><li><code>start</code></li><li><code>stop</code></li></ul></td></tr>
+                <tr><td>Pub topics</td><td><code>hdf5_writer</code></td></tr>
+                <tr><td>JSON output format</td><td>Heartbeat: <code>{"agent_status":"idle|recording"}</code></td></tr>
+            </table>
+
+            <table>
+                <tr><th>pupil_neon</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>Pupil Neon integration: device discovery/connection, recording control, condition events, and time-sync metrics.</td></tr>
+                <tr><td>Sub topics</td><td><code>coordinator</code></td></tr>
+                <tr><td>Accepted command</td><td><ul><li><code>pupil_neon_connect</code></li><li><code>start</code></li><li><code>condition</code></li><li><code>stop</code></li><li><code>pupil_neon_disconnect</code></li></ul></td></tr>
+                <tr><td>Pub topics</td><td><code>pupil_neon</code></td></tr>
+                <tr><td>JSON output format</td><td><ul><li>Heartbeat: <code>{"agent_status":...,"error"?:...}</code></li><li>Sync: <code>time_offset_ms_*</code>, <code>roundtrip_duration_ms_*</code>, (*mean, median, and std)</li></ul></td></tr>
+            </table>
+
+            <h3>Agents deployed on both crutches</h3>
+
+            <table>
+                <tr><th>tip_loadcell</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>HX711-based tip force acquisition with side-specific scale and offset handling.</td></tr>
+                <tr><td>Sub topics</td><td><code>coordinator</code></td></tr>
+                <tr><td>Accepted command</td><td><ul><li><code>start</code></li><li><code>stop</code></li><li><code>set_offset</code></li></ul></td></tr>
+                <tr><td>Pub topics</td><td><code>tip_loadcell</code></td></tr>
+                <tr><td>JSON output format</td><td><ul><li>Recording: <code>{"force":n,"side":"left|right"}</code></li><li>Heartbeat: <code>{"agent_status":"idle|recording","side":"left|right"}</code></li><li>Offset: <code>{"info":{"offset":{"value":n,"test":n}},"side":"left|right"}</code></li></ul></td></tr>
+            </table>
+
+            <table>
+                <tr><th>handle_loadcell</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>8-channel ADS1263 handle-force acquisition with channel map, range conversion, and offset calibration.</td></tr>
+                <tr><td>Sub topics</td><td><code>coordinator</code></td></tr>
+                <tr><td>Accepted command</td><td><ul><li><code>start</code></li><li><code>stop</code></li><li><code>set_offset</code></li></ul></td></tr>
+                <tr><td>Pub topics</td><td><code>handle_loadcell</code></td></tr>
+                <tr><td>JSON output format</td><td><ul><li>Recording: <code>{"force":{"sensor_label":...},"side":"left|right"}</code></li><li>Offset: <code>{"info":{"offset":{"value":{"sensor_label":...},"test":{"sensor_label":...}}},"side":"left|right"}</code></li><li>Heartbeat: <code>{"agent_status":"idle|recording","side":"left|right"}</code><br><br>Sensor labels are <code>up_front</code>, <code>up_back</code>, <code>right_front</code>, <code>right_back</code>, <code>left_front</code>, <code>left_back</code>, <code>down_front</code>, <code>down_back</code>.</li></ul></td></tr>
+            </table>
+
+            <table>
+                <tr><th>ppg</th><th></th></tr>
+                <tr><td>Agent type</td><td>Filter</td></tr>
+                <tr><td>Role</td><td>MAX30100-based PPG acquisition; publishes IR/RED samples while recording plus status heartbeat.</td></tr>
+                <tr><td>Sub topics</td><td><code>coordinator</code></td></tr>
+                <tr><td>Accepted command</td><td><ul><li><code>start</code></li><li><code>stop</code></li></ul></td></tr>
+                <tr><td>Pub topics</td><td><code>ppg</code></td></tr>
+                <tr><td>JSON output format</td><td><ul><li>Heartbeat: <code>{"agent_status":"idle|recording","side":"left|right"}</code></li><li>Samples: <code>{"ir":n,"red":n,"side":"left|right"}</code></li></ul></td></tr>
+            </table>
+
+            <table>
+                <tr><th>ups</th><th></th></tr>
+                <tr><td>Agent type</td><td>Source</td></tr>
+                <tr><td>Role</td><td>INA219 power monitor; computes battery percentage and estimated remaining time and publishes periodic telemetry.</td></tr>
+                <tr><td>Pub topics</td><td><code>ups</code></td></tr>
+                <tr><td>JSON output format</td><td><ul><li><code>{"agent_status":"idle","side":"left|right","info":{"voltage","current","power","percent","remaining_battery_time"}}</code></li></ul></td></tr>
+            </table>
+            
         </div>
     </div>
 

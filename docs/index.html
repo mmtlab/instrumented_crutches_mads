@@ -51,11 +51,7 @@
             </div>
 
             <h2>System Overview</h2>
-            <p>The system is built on a <strong>master/slave architecture</strong>:</p>
-            <ul>
-                <li><strong>Master crutch (right):</strong> Hosts web_server, coordinator, data storage, and eye-tracking control</li>
-                <li><strong>Slave crutch (left):</strong> Collects sensor data and communicates with master</li>
-            </ul>
+            <p>The system is built on a <strong>master/slave architecture</strong>, where the right crutch acts as master by hosting the web_server, coordinator, data storage, and eye-tracking control while also collecting sensor data; the left crutch acts as slave and focuses on sensor data acquisition.</p>
 
             <p>All components communicate via the MADS message broker using a publish/subscribe pattern.</p>
 
