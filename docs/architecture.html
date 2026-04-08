@@ -48,68 +48,17 @@
             <h2>Data Flow</h2>
             <p>The Web Server issues commands to the Coordinator through the MADS broker. The Coordinator drives the sensing agents, the Status Handler reports the live health of the system, and the HDF5 Writer persists the data streams that are later consumed by the visualization and download tools.</p>
 
-            <h2>Mermaid Diagram</h2>
-            <p>Copy the diagram below if you want the architecture in Mermaid format:</p>
-            <pre><code class="language-mermaid">flowchart LR
-    subgraph master[&quot;Master Crutch (i.e. Right)&quot;]
-        web_server[&quot;Web Server&quot;]
-        coordinator[&quot;Coordinator&quot;]
-        status_handler[&quot;Status Handler&quot;]
-        hdf5_writer[&quot;HDF5 Writer&quot;]
-        eye_tracker[&quot;Eye Tracker&quot;]
-        m_handle_loadcell[&quot;Handle Loadcell&quot;]
-        m_tip_loadcell[&quot;Tip Loadcell&quot;]
-        m_ups[&quot;UPS&quot;]
-        m_ppg[&quot;PPG&quot;]
+            <h2>System Diagram</h2>
+            <p>The diagram below is the exported SVG version of the architecture schema.</p>
+            <p>
+                <img src="architecture-diagram.svg" alt="Instrumented Crutches architecture diagram" style="width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px;">
+            </p>
+            <p>
+                <a href="architecture-diagram.svg" target="_blank" rel="noopener noreferrer">Open diagram in a new tab</a>
+            </p>
 
-        web_server --&gt;|ws_command| coordinator
-        coordinator --&gt;|command| status_handler
-        status_handler --&gt;|status| web_server
-
-        m_ups --&gt;|ups| status_handler
-
-        coordinator --&gt;|command| hdf5_writer
-        hdf5_writer --&gt;|data| hdf5[(HDF5 file)]
-        hdf5_writer --&gt;|hdf5_writer| status_handler
-
-        coordinator --&gt;|command| m_tip_loadcell
-        m_tip_loadcell --&gt;|tip_loadcell| status_handler
-
-        coordinator --&gt;|command| m_handle_loadcell
-        m_handle_loadcell --&gt;|handle_loadcell| status_handler
-
-        coordinator --&gt;|command| m_ppg
-        m_ppg --&gt;|ppg| status_handler
-
-        coordinator --&gt;|command| eye_tracker
-        eye_tracker --&gt;|pupil_neon| status_handler
-
-        m_tip_loadcell --&gt;|tip_loadcell| hdf5_writer
-        m_handle_loadcell --&gt;|handle_loadcell| hdf5_writer
-        m_ppg --&gt;|ppg| hdf5_writer
-        eye_tracker --&gt;|pupil_neon| hdf5_writer
-    end
-
-    subgraph slave[&quot;Slave Crutch (i.e. Left)&quot;]
-        s_ups[&quot;UPS&quot;]
-        s_tip_loadcell[&quot;Tip Loadcell&quot;]
-        s_handle_loadcell[&quot;Handle Loadcell&quot;]
-        s_ppg[&quot;PPG&quot;]
-    end
-
-    coordinator -.->|command| s_tip_loadcell
-    s_tip_loadcell -.->|tip_loadcell| status_handler
-    s_tip_loadcell -.->|tip_loadcell| hdf5_writer
-
-    coordinator -.->|command| s_handle_loadcell
-    s_handle_loadcell -.->|handle_loadcell| status_handler
-    s_handle_loadcell -.->|handle_loadcell| hdf5_writer
-
-    s_ups -.->|ups| status_handler
-
-    coordinator -.->|command| s_ppg
-    s_ppg -.->|ppg| status_handler
-    s_ppg -.->|ppg| hdf5_writer</code></pre>
+        
+            
         </div>
     </div>
     <footer>

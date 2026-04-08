@@ -126,9 +126,14 @@ You can find the acquisition board case STL files in the `templates/case` folder
 ## Architecture
 
 ```mermaid
-%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
-flowchart LR
-    subgraph master["Master Crutch (i.e. Right)"]
+---
+config:
+  layout: elk
+  theme: neo-dark
+  look: neo
+---
+flowchart BT
+ subgraph master["Master Crutch (i.e. Right)"]
         web_server["Web Server"]
         coordinator["Coordinator"]
         status_handler["Status Handler"]
@@ -138,55 +143,29 @@ flowchart LR
         m_tip_loadcell["Tip Loadcell"]
         m_ups["UPS"]
         m_ppg["PPG"]
-        
-        web_server -->|ws_command| coordinator
-        coordinator -->|command| status_handler
-        status_handler -->|status| web_server
-        
-        m_ups -->|ups| status_handler
-        
-        coordinator -->|command| hdf5_writer
-        hdf5_writer -->|data| hdf5[(HDF5 file)]
-        hdf5_writer -->|hdf5_writer| status_handler
-        
-        coordinator -->|command| m_tip_loadcell
-        m_tip_loadcell -->|tip_loadcell| status_handler
-        
-        coordinator -->|command| m_handle_loadcell
-        m_handle_loadcell -->|handle_loadcell| status_handler
-        
-        coordinator -->|command| m_ppg
-        m_ppg -->|ppg| status_handler
-        
-        coordinator -->|command| eye_tracker
-        eye_tracker -->|pupil_neon| status_handler
-        
-        m_tip_loadcell -->|tip_loadcell| hdf5_writer
-        m_handle_loadcell -->|handle_loadcell| hdf5_writer
-        m_ppg -->|ppg| hdf5_writer
-        eye_tracker -->|pupil_neon| hdf5_writer
-    end
-    
-    subgraph slave["Slave Crutch (i.e. Left)"]
+        hdf5[("HDF5 file")]
+  end
+ subgraph slave["Slave Crutch (i.e. Left)"]
         s_ups["UPS"]
         s_tip_loadcell["Tip Loadcell"]
         s_handle_loadcell["Handle Loadcell"]
         s_ppg["PPG"]
-    end
-    
-    coordinator -.->|command| s_tip_loadcell
-    s_tip_loadcell -.->|tip_loadcell| status_handler
-    s_tip_loadcell -.->|tip_loadcell| hdf5_writer
-    
-    coordinator -.->|command| s_handle_loadcell
-    s_handle_loadcell -.->|handle_loadcell| status_handler
-    s_handle_loadcell -.->|handle_loadcell| hdf5_writer
-
-    s_ups -.->|ups| status_handler
-    
-    coordinator -.->|command| s_ppg
-    s_ppg -.->|ppg| status_handler
-    s_ppg -.->|ppg| hdf5_writer
+  end
+    web_server -- ws_command --> coordinator
+    coordinator -- command --> status_handler & hdf5_writer & m_tip_loadcell & m_handle_loadcell & m_ppg & eye_tracker
+    status_handler -- status --> web_server
+    m_ups -- ups --> status_handler
+    hdf5_writer -- data --> hdf5
+    hdf5_writer -- hdf5_writer --> status_handler
+    m_tip_loadcell -- tip_loadcell --> status_handler & hdf5_writer
+    m_handle_loadcell -- handle_loadcell --> status_handler & hdf5_writer
+    m_ppg -- ppg --> status_handler & hdf5_writer
+    eye_tracker -- pupil_neon --> status_handler & hdf5_writer
+    coordinator -. command .-> s_tip_loadcell & s_handle_loadcell & s_ppg
+    s_tip_loadcell -. tip_loadcell .-> status_handler & hdf5_writer
+    s_handle_loadcell -. handle_loadcell .-> status_handler & hdf5_writer
+    s_ups -. ups .-> status_handler
+    s_ppg -. ppg .-> status_handler & hdf5_writer
 ```
 
 Each instrumented crutch runs on a Raspberry Pi Zero 2 W and uses MADS agents for sensing, control, and communication.
