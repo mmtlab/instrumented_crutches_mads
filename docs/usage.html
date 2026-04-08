@@ -21,9 +21,43 @@
         <div class="content">
             <h1>Usage Manual</h1>
 
-            <div class="alert alert-warning">
-                <strong>Documentation Notice:</strong> This documentation was generated with GitHub Copilot and is currently under review and correction.
+            <h2>Recommended Workflow (Web Interface)</h2>
+            <ol>
+                <li>Power on the master crutch (default: <strong>right</strong>) and wait for services to start.</li>
+                <li>Connect a PC/tablet/smartphone to the master hotspot.</li>
+                <li>Open <code>http://10.42.0.1:8000</code> in your browser (the <strong>Record</strong> page).</li>
+                <li>In the <strong>Status</strong> panel, click <strong>Update Datetime</strong> to immediately sync the master date/time.</li>
+                <li>Power on the slave crutch (left): it will auto-connect to the hotspot and sync time via NTP after about 1-2 minutes.</li>
+                <li>In the <strong>Status</strong> panel, verify that the main nodes are reachable (tip/handle/ppg, logger, coordinator; eye-tracker if used).</li>
+                <li>
+                    Run calibration in <strong>Calibration</strong> with the <strong>Calibrate</strong> button and check updated values/indicators.
+                    <strong>Note:</strong> keep the crutch lifted off the ground and do not press the handle, otherwise the offset calibration will be invalid.
+                </li>
+                <li>
+                    (Optional) In the <strong>Eye-tracker</strong> section, click <strong>Connect</strong> and verify the status becomes <em>Connected</em>.
+                    <strong>Note:</strong> for discovery to work, the Pupil Neon must be paired with its smartphone, and must be connected to the same network as the master crutch.
+                </li>
+                <li>Fill in <strong>Test Configuration</strong> fields (Subject ID, Session ID, Height, Weight, Crutch Height).</li>
+                <li>(Optional) Add notes in <strong>Comments</strong>.</li>
+                <li>(Optional) Click <strong>Condition</strong> and select the current condition.</li>
+                <li>
+                    Click <strong>Start</strong> to begin recording.
+                    <strong>Note:</strong> the condition can be changed during acquisition; the timestamp of each new condition is recorded.
+                </li>
+                <li>During acquisition, monitor <strong>Status</strong> and confirm services/sensors are in a recording-consistent state.</li>
+                <li>If the condition changes during the test, use <strong>Condition</strong> again.</li>
+                <li>Click <strong>Stop</strong> to end the acquisition.</li>
+            </ol>
+
+            <div class="alert alert-info">
+                <strong>Note:</strong> each acquisition is assigned an incremental ID (shown as <code>Recording ID</code>).
             </div>
+
+            <h2>After Recording</h2>
+            <ul>
+                <li><strong>View Data</strong> (<code>/static/visualization.html</code>): select Subject, Session, and Recording to display charts.</li>
+                <li><strong>Download</strong> (<code>/static/download.html</code>): download CSV files (<code>force_ID.csv</code> and <code>info_ID.csv</code>).</li>
+            </ul>
 
         </div>
     </div>

@@ -187,3 +187,29 @@ flowchart LR
     s_ppg -.->|ppg| hdf5_writer
 ```
 
+## Usage
+
+Recommended workflow (Web interface):
+
+1. Power on the master crutch (default: **right**) and wait for services to start.
+2. Connect a PC/tablet/smartphone to the master hotspot.
+3. Open `http://10.42.0.1:8000` in your browser (the **Record** page).
+4. In the **Status** panel, click **Update Datetime** to immediately sync the master date/time.
+5. Power on the slave crutch (left): it will auto-connect to the hotspot and sync time via NTP after about 1-2 minutes.
+6. In the **Status** panel, verify that the main nodes are reachable (tip/handle/ppg, logger, coordinator; eye-tracker if used).
+7. Run calibration in **Calibration** with the **Calibrate** button and check updated values/indicators. **Note:** keep the crutch lifted off the ground and do not press the handle, otherwise the offset calibration will be invalid.
+8. (Optional) In the **Eye-tracker** section, click **Connect** and verify the status becomes *Connected*. **Note:** for discovery to work, the Pupil Neon must be paired with its smartphone, and must be connected to the same network as the master crutch.
+9. Fill in **Test Configuration** fields (Subject ID, Session ID, Height, Weight, Crutch Height).
+10. (Optional) Add notes in **Comments**.
+11. (Optional) Click **Condition** and select the current condition.
+12. Click **Start** to begin recording.
+13. During acquisition, monitor **Status** and confirm services/sensors are in a recording-consistent state.
+14. If the condition changes during the test, use **Condition** again. The timestamp of each new condition is recorded.
+15. Click **Stop** to end the acquisition.
+
+Note: each acquisition is assigned an incremental ID (shown as `Recording ID`).
+
+After recording:
+
+- **View Data**: select Subject, Session, and Recording to display charts.
+- **Download**: download CSV files (`force_ID.csv` and `info_ID.csv`).

@@ -34,10 +34,10 @@ pip install -r requirements.txt
 **Dependencies:**
 - smbus (provided by `python3-smbus`) or `smbus2` via pip fallback
 
-## Run
+## Run example
 
 ```bash
-python ups.py
+python ups.py -o side=right
 ```
 
 Add `-s tcp:\\<broker-ip>:9092` to connect to a remote broker (default is `tcp:\\localhost:9092`).

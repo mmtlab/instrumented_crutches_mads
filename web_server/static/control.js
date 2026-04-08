@@ -448,7 +448,7 @@
 
         if (percent === null) {
             // Show unknown state
-            valueLabel.textContent = '--.-%';
+            valueLabel.textContent = '--%';
             fill.style.width = '0%';
             eta.textContent = 'ETA --:--';
             container.classList.remove('battery-status-low', 'battery-status-mid', 'battery-status-high');
@@ -456,8 +456,8 @@
         }
         
         // Normal state with valid percent
-        valueLabel.textContent = `${percent.toFixed(1)}%`;
-        fill.style.width = `${percent.toFixed(1)}%`;
+        valueLabel.textContent = `${percent.toFixed(0)}%`;
+        fill.style.width = `${percent.toFixed(0)}%`;
         eta.textContent = `ETA ${remaining}`;
 
         container.classList.remove('battery-status-low', 'battery-status-mid', 'battery-status-high');
