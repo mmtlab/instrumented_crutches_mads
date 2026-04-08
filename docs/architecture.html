@@ -21,13 +21,97 @@
         <div class="content">
             <h1>System Architecture</h1>
 
-            <div class="alert alert-warning">
-                <strong>Documentation Notice:</strong> This documentation was generated with GitHub Copilot and is currently under review and correction.
-            </div>
+            <p>The system is organized around two crutches connected through the MADS broker. The master crutch hosts the control and logging services, while both crutches run the sensing agents that publish data to the network. The full Mermaid source is also available in the <a href="https://github.com/mmtlab/instrumented_crutches_mads#architecture" target="_blank" rel="noopener noreferrer">README architecture section</a>.</p>
+
+            <h2>Overview</h2>
+            <p>Each crutch is based on a Raspberry Pi Zero 2 W and runs a small set of MADS agents. The master side coordinates the acquisition workflow, stores data, and exposes the web interface. The slave side focuses on local sensing and publishes the same acquisition streams so the master can merge them into a single recording.</p>
+
+            <h2>Role Split</h2>
+            <ul>
+                <li><strong>Master-only services:</strong> Web Server, Coordinator, Status Handler, HDF5 Writer, Eye Tracker.</li>
+                <li><strong>Services on both crutches:</strong> Tip Loadcell, Handle Loadcell, PPG, UPS.</li>
+            </ul>
+
+            <h2>Agent Descriptions</h2>
+            <ul>
+                <li><strong>Web Server:</strong> exposes the Record, View Data, and Download pages; sends commands to the acquisition pipeline; and serves the UI for calibration, conditions, and test configuration.</li>
+                <li><strong>Coordinator:</strong> receives web commands and forwards start, stop, calibration, and device-control actions to the appropriate agents.</li>
+                <li><strong>Status Handler:</strong> aggregates startup, health, warning, error, and shutdown events from all monitored agents and publishes the current system state.</li>
+                <li><strong>HDF5 Writer:</strong> stores synchronized acquisition topics into structured HDF5 files, creating the dataset used by the visualization and download pages.</li>
+                <li><strong>Eye Tracker:</strong> manages discovery and connection of the Pupil Neon device, handles recording control, and publishes synchronization statistics.</li>
+                <li><strong>Tip Loadcell:</strong> acquires tip force data from the force sensor at the crutch end and publishes it for logging and live status updates.</li>
+                <li><strong>Handle Loadcell:</strong> reads the multi-channel handle sensor array, including front/back and directional force components, and publishes the resulting force vectors.</li>
+                <li><strong>PPG:</strong> reads the MAX30100-based pulse oximeter data and publishes the physiological stream for live monitoring and storage.</li>
+                <li><strong>UPS:</strong> monitors battery state and power metrics so the system can report remaining charge and estimated runtime.</li>
+            </ul>
+
+            <h2>Data Flow</h2>
+            <p>The Web Server issues commands to the Coordinator through the MADS broker. The Coordinator drives the sensing agents, the Status Handler reports the live health of the system, and the HDF5 Writer persists the data streams that are later consumed by the visualization and download tools.</p>
+
+            <h2>Mermaid Diagram</h2>
+            <p>Copy the diagram below if you want the architecture in Mermaid format:</p>
+            <pre><code class="language-mermaid">flowchart LR
+    subgraph master[&quot;Master Crutch (i.e. Right)&quot;]
+        web_server[&quot;Web Server&quot;]
+        coordinator[&quot;Coordinator&quot;]
+        status_handler[&quot;Status Handler&quot;]
+        hdf5_writer[&quot;HDF5 Writer&quot;]
+        eye_tracker[&quot;Eye Tracker&quot;]
+        m_handle_loadcell[&quot;Handle Loadcell&quot;]
+        m_tip_loadcell[&quot;Tip Loadcell&quot;]
+        m_ups[&quot;UPS&quot;]
+        m_ppg[&quot;PPG&quot;]
+
+        web_server --&gt;|ws_command| coordinator
+        coordinator --&gt;|command| status_handler
+        status_handler --&gt;|status| web_server
+
+        m_ups --&gt;|ups| status_handler
+
+        coordinator --&gt;|command| hdf5_writer
+        hdf5_writer --&gt;|data| hdf5[(HDF5 file)]
+        hdf5_writer --&gt;|hdf5_writer| status_handler
+
+        coordinator --&gt;|command| m_tip_loadcell
+        m_tip_loadcell --&gt;|tip_loadcell| status_handler
+
+        coordinator --&gt;|command| m_handle_loadcell
+        m_handle_loadcell --&gt;|handle_loadcell| status_handler
+
+        coordinator --&gt;|command| m_ppg
+        m_ppg --&gt;|ppg| status_handler
+
+        coordinator --&gt;|command| eye_tracker
+        eye_tracker --&gt;|pupil_neon| status_handler
+
+        m_tip_loadcell --&gt;|tip_loadcell| hdf5_writer
+        m_handle_loadcell --&gt;|handle_loadcell| hdf5_writer
+        m_ppg --&gt;|ppg| hdf5_writer
+        eye_tracker --&gt;|pupil_neon| hdf5_writer
+    end
+
+    subgraph slave[&quot;Slave Crutch (i.e. Left)&quot;]
+        s_ups[&quot;UPS&quot;]
+        s_tip_loadcell[&quot;Tip Loadcell&quot;]
+        s_handle_loadcell[&quot;Handle Loadcell&quot;]
+        s_ppg[&quot;PPG&quot;]
+    end
+
+    coordinator -.->|command| s_tip_loadcell
+    s_tip_loadcell -.->|tip_loadcell| status_handler
+    s_tip_loadcell -.->|tip_loadcell| hdf5_writer
+
+    coordinator -.->|command| s_handle_loadcell
+    s_handle_loadcell -.->|handle_loadcell| status_handler
+    s_handle_loadcell -.->|handle_loadcell| hdf5_writer
+
+    s_ups -.->|ups| status_handler
+
+    coordinator -.->|command| s_ppg
+    s_ppg -.->|ppg| status_handler
+    s_ppg -.->|ppg| hdf5_writer</code></pre>
         </div>
     </div>
-
-    
     <footer>
         <p>&copy; 2024-2026 Instrumented Crutches. Built on <strong>MADS</strong> framework.</p>
     </footer>

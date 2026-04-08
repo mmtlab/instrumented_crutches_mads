@@ -6,6 +6,8 @@ This repository contains an instrumented crutches system built on top of [MADS](
 
 This project implements MADS plugins for collecting and processing data from instrumented crutches, including tip load cells, eye tracking, and coordination between multiple sensors. For more information about MADS, visit the [official documentation](https://mads-net.github.io/).
 
+For the Instrumented Crutches documentation, visit the online [docs](https://mmtlab.github.io/instrumented_crutches_mads/index.html).
+
 *Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
 
 ## Installation
@@ -186,6 +188,23 @@ flowchart LR
     s_ppg -.->|ppg| status_handler
     s_ppg -.->|ppg| hdf5_writer
 ```
+
+Each instrumented crutch runs on a Raspberry Pi Zero 2 W and uses MADS agents for sensing, control, and communication.
+In this architecture, some agents run only on the master crutch, while others run on both crutches.
+
+Master-only services
+- **Web Server**: provides the Record/View/Download UI and sends control commands.
+- **Coordinator**: receives web commands and orchestrates acquisition lifecycle across agents.
+- **Status Handler**: aggregates startup/health/error/shutdown events and publishes system status.
+- **HDF5 Writer**: logs incoming topics into structured HDF5 files for each acquisition.
+- **Eye Tracker (Pupil Neon)**: manages discovery/connection/recording and publishes sync statistics.
+
+Services deployed on both crutches
+- **Tip Loadcell**: acquires axial load from the tip sensor.
+- **Handle Loadcell**: acquires multi-channel handle forces.
+- **PPG**: acquires photoplethysmography data.
+- **UPS**: publishes battery and power metrics.
+
 
 ## Usage
 
