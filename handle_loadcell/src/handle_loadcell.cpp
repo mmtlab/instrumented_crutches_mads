@@ -146,11 +146,7 @@ public:
               return return_type::error;
             }
 
-            const auto adc_read_start = std::chrono::steady_clock::now();
             ADS1263_GetAll(_channel_list.data(), _raw_values.data(), static_cast<int>(_channel_list.size()));
-            _last_adc_read_ms = std::chrono::duration_cast<std::chrono::microseconds>(
-              std::chrono::steady_clock::now() - adc_read_start
-            ).count() / 1000.0;
 
             out["force"] = build_channels_forces(true);
         #else
@@ -237,9 +233,9 @@ public:
     }
 
     // Parse input_map as indexed pairs: [[0, "up_front"], [1, "up_back"], ...]
-    if (_params.contains("input_map") && _params["input_map"].is_array()) {
+    if (_params.contains("input_map") && _params["input_map"].contains(_side) && _params["input_map"][_side].is_array()) {
       map<int, string> parsed_input_map;
-      for (const auto &entry : _params["input_map"]) {
+      for (const auto &entry : _params["input_map"][_side]) {
         if (entry.is_array() && entry.size() == 2 && entry[0].is_number_integer() && entry[1].is_string()) {
           parsed_input_map[entry[0].get<int>()] = entry[1].get<string>();
         }

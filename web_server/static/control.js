@@ -22,9 +22,9 @@
 
     const HANDLE_OFFSET_GROUPS = [
         { key: 'up', label: 'UP', frontKey: 'up_front', backKey: 'up_back' },
-        { key: 'right', label: 'RIGHT', frontKey: 'right_front', backKey: 'right_back' },
+        { key: 'internal', label: 'INTERNAL', frontKey: 'int_front', backKey: 'int_back' },
         { key: 'down', label: 'DOWN', frontKey: 'down_front', backKey: 'down_back' },
-        { key: 'left', label: 'LEFT', frontKey: 'left_front', backKey: 'left_back' }
+        { key: 'external', label: 'EXTERNAL', frontKey: 'ext_front', backKey: 'ext_back' }
     ];
     const HANDLE_OFFSET_ORDER = HANDLE_OFFSET_GROUPS.flatMap((group) => [group.frontKey, group.backKey]);
     const offsetClasses = ['offset-indicator-unknown', 'offset-indicator-ok', 'offset-indicator-warning'];
@@ -314,7 +314,15 @@
         if (Number.isNaN(parsed.getTime())) {
             return String(timestampRaw);
         }
-        return parsed.toLocaleString();
+        return new Intl.DateTimeFormat('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).format(parsed);
     }
 
     function updateCoordinatorLastUpdate(timestampRaw) {

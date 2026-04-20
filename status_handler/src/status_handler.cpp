@@ -213,9 +213,9 @@ public:
               if (input["info"]["offset"].contains("value") && input["info"]["offset"].contains("test")) {
                 // Format message like: "offset value = [50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0] N, offset test = [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0] N"
                 // always send the status in this order:
-                // "up_front", "up_back", "right_front", "right_back", "left_front", "left_back", "down_front", "down_back"
+                // "up_front", "up_back", "int_front", "int_back", "ext_front", "ext_back", "down_front", "down_back"
                 std::ostringstream val_str, test_str;
-                for (const auto& label : {"up_front", "up_back", "right_front", "right_back", "left_front", "left_back", "down_front", "down_back"}) {
+                for (const auto& label : {"up_front", "up_back", "int_front", "int_back", "ext_front", "ext_back", "down_front", "down_back"}) {
                   float offset_value = input["info"]["offset"]["value"][label].get<float>();
                   float offset_test = input["info"]["offset"]["test"][label].get<float>();
                   val_str << std::fixed << std::setprecision(1) << offset_value << ", ";

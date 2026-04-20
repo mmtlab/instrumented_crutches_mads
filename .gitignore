@@ -5,6 +5,7 @@
 /tip_loadcell/build/
 /handle_loadcell/build/
 /web_server/data/
+analysis/graphs/
 
 # just for development
 /filter_template
