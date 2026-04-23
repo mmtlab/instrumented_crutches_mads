@@ -3,7 +3,7 @@ close all
 clc
 
 % Configuration
-idx = 20;
+idx = 60;
 
 scriptDir = fileparts(mfilename('fullpath'));
 analysisDir = fileparts(scriptDir);
@@ -100,6 +100,10 @@ rightColor = [0, 100, 0] / 255;   % Dark green
 fig = figure('Visible', 'on', 'Color', 'w', 'Position', [100, 100, 1100, max(320 * numel(signalNames), 450)]);
 tiledlayout(numel(signalNames), 1);
 
+ax = gobjects(numel(signalNames), 1);
+yMin = inf;
+yMax = -inf;
+
 for s = 1:numel(signalNames)
     signalName = signalNames(s);
     signal = read_dataset_1d(filename, groupPath + "/" + signalName);
@@ -113,10 +117,16 @@ for s = 1:numel(signalNames)
     sideSlice = sides(1:n);
     y = double(signal(1:n));
 
+    finiteMask = isfinite(y);
+    if any(finiteMask)
+        yMin = min(yMin, min(y(finiteMask)));
+        yMax = max(yMax, max(y(finiteMask)));
+    end
+
     leftMask = sideSlice == "left";
     rightMask = sideSlice == "right";
 
-    nexttile
+    ax(s) = nexttile;
     hold on
     plot(t(leftMask), y(leftMask), '.', 'Color', leftColor, 'DisplayName', 'left', 'MarkerSize', 8, 'LineStyle', 'none');
     plot(t(rightMask), y(rightMask), '.', 'Color', rightColor, 'DisplayName', 'right', 'MarkerSize', 8, 'LineStyle', 'none');
@@ -124,6 +134,20 @@ for s = 1:numel(signalNames)
     ylabel(signalName, 'Interpreter', 'none');
     grid on
     legend('Location', 'best');
+end
+
+validAx = ax(isgraphics(ax));
+if ~isempty(validAx) && isfinite(yMin) && isfinite(yMax)
+    if yMin == yMax
+        delta = max(1, abs(yMin) * 0.05);
+        yLimits = [yMin - delta, yMax + delta];
+    else
+        yLimits = [yMin, yMax];
+    end
+
+    for i = 1:numel(validAx)
+        ylim(validAx(i), yLimits);
+    end
 end
 
 xlabel('time [s] relative to first common timestamp');

@@ -97,7 +97,7 @@ class MAX30100(object):
                  led_current_red=11.0,
                  led_current_ir=11.0,
                  pulse_width=1600,
-                 max_buffer_len=10000
+                 max_buffer_len=1
                  ):
 
         # Default to the standard I2C bus on Pi.
@@ -112,19 +112,19 @@ class MAX30100(object):
         self.set_spo_config(sample_rate, pulse_width)
 
         # Reflectance data (latest update)
-        self.buffer_red = []
-        self.buffer_ir = []
+        self.buffer_red = None
+        self.buffer_ir = None
 
         self.max_buffer_len = max_buffer_len
         self._interrupt = None
 
     @property
     def red(self):
-        return self.buffer_red[-1] if self.buffer_red else None
+        return self.buffer_red
 
     @property
     def ir(self):
-        return self.buffer_ir[-1] if self.buffer_ir else None
+        return self.buffer_ir
 
     def set_led_current(self, led_current_red=11.0, led_current_ir=11.0):
         # Validate the settings, convert to bit values.
@@ -161,11 +161,8 @@ class MAX30100(object):
     def read_sensor(self):
         bytes = self.i2c.read_i2c_block_data(I2C_ADDRESS, FIFO_DATA, 4)
         # Add latest values.
-        self.buffer_ir.append(bytes[0]<<8 | bytes[1])
-        self.buffer_red.append(bytes[2]<<8 | bytes[3])
-        # Crop our local FIFO buffer to length.
-        self.buffer_red = self.buffer_red[-self.max_buffer_len:]
-        self.buffer_ir = self.buffer_ir[-self.max_buffer_len:]
+        self.buffer_ir = bytes[0]<<8 | bytes[1]
+        self.buffer_red = bytes[2]<<8 | bytes[3]
 
     def shutdown(self):
         reg = self.i2c.read_byte_data(I2C_ADDRESS, MODE_CONFIG)

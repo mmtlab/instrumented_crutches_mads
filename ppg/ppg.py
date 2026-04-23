@@ -61,6 +61,7 @@ class PpgAgent:
         self.sensor_led_current_ir = 50.0
         self.sensor_pulse_width = 1600
         self.enable_spo2 = True
+        self.max_buffer_len = 1
 
         # Lazily initialize sensor only on start command.
         self.mx30 = None
@@ -79,23 +80,24 @@ class PpgAgent:
         print("PPG agent started")
 
     def _publish_metrics_and_status(self, ir=None, red=None, error: Optional[str] = None, include_status: bool = False):
-        payload = {
-            "side": self.side,
-        }
+        
+        payload = {}
 
         if include_status:
             payload["agent_status"] = self.agent_status.name.lower()
 
-        if ir is not None:
+        if ir is not None and red is not None:
             payload["ir"] = ir
-
-        if red is not None:
             payload["red"] = red
 
         if error is not None:
             payload["error"] = error
 
-        self.agent.publish(payload, self.pub_topic)
+        if payload:
+            # add side only when something is actually published
+            payload["side"] = self.side
+
+            self.agent.publish(payload, self.pub_topic)
 
     def start_recording(self):
         if self.agent_status == AgentStatus.RECORDING:
@@ -118,6 +120,7 @@ class PpgAgent:
             led_current_red=self.sensor_led_current_red,
             led_current_ir=self.sensor_led_current_ir,
             pulse_width=self.sensor_pulse_width,
+            max_buffer_len=self.max_buffer_len
         )
         if self.enable_spo2:
             self.mx30.enable_spo2()
@@ -131,6 +134,7 @@ class PpgAgent:
                 led_current_red=self.sensor_led_current_red,
                 led_current_ir=self.sensor_led_current_ir,
                 pulse_width=self.sensor_pulse_width,
+                max_buffer_len=self.max_buffer_len
             )
             probe.enable_spo2()
             probe.get_part_id()
@@ -167,12 +171,12 @@ class PpgAgent:
                 self.start_recording()
             except Exception as exc:
                 self.agent_status = AgentStatus.IDLE
-                self._publish_metrics_and_status(ir=None, red=None, error=f"Failed to start sensor: {exc}", include_status=False)
+                self._publish_metrics_and_status(ir=None, red=None, error=f"Failed to start sensor: {exc}")
         elif cmd == "stop":
             try:
                 self.stop_recording()
             except Exception as exc:
-                self._publish_metrics_and_status(ir=None, red=None, error=f"Failed to stop sensor: {exc}", include_status=False)
+                self._publish_metrics_and_status(ir=None, red=None, error=f"Failed to stop sensor: {exc}")
 
     def run(self):
         """Main run loop: publish status/metrics and react to commands."""
@@ -187,8 +191,9 @@ class PpgAgent:
             while True:
                 now = time.monotonic()
 
-                if now >= next_health_ts:
-                    self._publish_metrics_and_status(ir=None, red=None, error=None, include_status=True)
+                # check if it's time to publish health status (even if we have no new sensor data, to indicate we are alive and our status)
+                include_status = now >= next_health_ts
+                if include_status:
                     next_health_ts = now + health_period_s
 
                 if self.agent_status == AgentStatus.RECORDING and now >= next_sample_ts:
@@ -196,10 +201,15 @@ class PpgAgent:
                         if self.mx30 is None:
                             raise RuntimeError("Sensor not initialized")
                         self.mx30.read_sensor()
-                        self._publish_metrics_and_status(ir=self.mx30.ir, red=self.mx30.red, error=None, include_status=False)
+
+                        self._publish_metrics_and_status(ir=self.mx30.ir, red=self.mx30.red, error=None, include_status=include_status)
                     except Exception as exc:
-                        self._publish_metrics_and_status(ir=None, red=None, error=str(exc), include_status=False)
+                        self._publish_metrics_and_status(ir=None, red=None, error=str(exc), include_status=include_status)
                     next_sample_ts = now + sample_period_s
+
+                elif self.agent_status != AgentStatus.RECORDING and include_status:
+                    self._publish_metrics_and_status(ir=None, red=None, error=None, include_status=include_status)
+
 
                 msg_type = self.agent.receive()
                 if msg_type != MessageType.NONE:
@@ -213,7 +223,7 @@ class PpgAgent:
             self.agent_status = AgentStatus.SHUTDOWN
             try:
                 self._stop_sensor()
-                self._publish_metrics_and_status(ir=None, red=None, error="Agent shutting down", include_status=True)
+                self._publish_metrics_and_status(ir=None, red=None, error="Agent shutting down")
             except Exception:
                 pass
             try:
@@ -246,7 +256,7 @@ def main():
         if agent is not None:
             try:
                 if last_error is not None:
-                    agent._publish_metrics_and_status(ir=None, red=None, error=str(last_error), include_status=True)
+                    agent._publish_metrics_and_status(ir=None, red=None, error=str(last_error))
             except Exception:
                 pass
         sys.exit(exit_code)
