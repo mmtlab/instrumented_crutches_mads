@@ -3,7 +3,7 @@ close all
 clc
 
 % Configuration
-idx = 60;
+idx = 67;
 
 scriptDir = fileparts(mfilename('fullpath'));
 analysisDir = fileparts(scriptDir);
@@ -130,7 +130,7 @@ for s = 1:numel(signalNames)
     hold on
     plot(t(leftMask), y(leftMask), '.', 'Color', leftColor, 'DisplayName', 'left', 'MarkerSize', 8, 'LineStyle', 'none');
     plot(t(rightMask), y(rightMask), '.', 'Color', rightColor, 'DisplayName', 'right', 'MarkerSize', 8, 'LineStyle', 'none');
-    title(groupName + "/" + signalName, 'Interpreter', 'none');
+    title(signalName, 'Interpreter', 'none');
     ylabel(signalName, 'Interpreter', 'none');
     grid on
     legend('Location', 'best');
@@ -150,10 +150,83 @@ if ~isempty(validAx) && isfinite(yMin) && isfinite(yMax)
     end
 end
 
-xlabel('time [s] relative to first common timestamp');
+xlabel('time [s]');
 sgtitle("Group: " + groupName, 'Interpreter', 'none');
 
 safeGroupName = regexprep(groupName, '[^a-zA-Z0-9_-]', '_');
+outName = sprintf('acq_%d_%s.png', idx, safeGroupName);
+outPath = fullfile(outputDir, outName);
+exportgraphics(fig, outPath, 'Resolution', 150);
+
+if groupName == "handle_loadcell"
+    plot_handle_loadcell_pairs(filename, groupPath, idx, outputDir, timeSeconds, sides, leftColor, rightColor);
+end
+end
+
+
+function plot_handle_loadcell_pairs(filename, groupPath, idx, outputDir, timeSeconds, sides, leftColor, rightColor)
+datasets = h5info(filename, groupPath).Datasets;
+datasetNames = string({datasets.Name});
+
+pairs = [
+    "up", "force.up_front", "force.up_back";
+    "down", "force.down_front", "force.down_back";
+    "int", "force.int_front", "force.int_back";
+    "ext", "force.ext_front", "force.ext_back"
+    ];
+
+for i = 1:size(pairs, 1)
+    if ~any(datasetNames == pairs(i, 2)) || ~any(datasetNames == pairs(i, 3))
+        warning('Dataset mancanti per %s in %s: %s e/o %s', pairs(i, 1), groupPath, pairs(i, 2), pairs(i, 3));
+        return
+    end
+end
+
+fig = figure('Visible', 'on', 'Color', 'w', 'Position', [140, 120, 1100, 1200]);
+tiledlayout(4, 1);
+
+nMax = numel(timeSeconds);
+
+for i = 1:size(pairs, 1)
+    label = pairs(i, 1);
+    frontName = pairs(i, 2);
+    backName = pairs(i, 3);
+
+    frontVals = read_dataset_1d(filename, groupPath + "/" + frontName);
+    backVals = read_dataset_1d(filename, groupPath + "/" + backName);
+
+    n = min([nMax, numel(sides), numel(frontVals), numel(backVals)]);
+    if n == 0
+        continue
+    end
+
+    t = timeSeconds(1:n);
+    sideSlice = sides(1:n);
+    y = double(frontVals(1:n)) + double(backVals(1:n));
+
+    leftMask = sideSlice == "left";
+    rightMask = sideSlice == "right";
+
+    nexttile
+    hold on
+    plot(t(leftMask), y(leftMask), '.', 'Color', leftColor, 'DisplayName', 'left', 'MarkerSize', 8, 'LineStyle', 'none');
+    plot(t(rightMask), y(rightMask), '.', 'Color', rightColor, 'DisplayName', 'right', 'MarkerSize', 8, 'LineStyle', 'none');
+    ylabel(label + " [N]", 'Interpreter', 'none');
+    title(label + " = " + frontName + " + " + backName, 'Interpreter', 'none');
+    grid on
+    legend('Location', 'best');
+
+    if label == "up"
+        ylim([-10, 510]);
+    else
+        ylim([-10, 60]);
+    end
+end
+
+xlabel('time [s]');
+sgtitle('Group: handle_loadcell (paired sums)', 'Interpreter', 'none');
+
+safeGroupName = regexprep("handle_loadcell_pairs", '[^a-zA-Z0-9_-]', '_');
 outName = sprintf('acq_%d_%s.png', idx, safeGroupName);
 outPath = fullfile(outputDir, outName);
 exportgraphics(fig, outPath, 'Resolution', 150);

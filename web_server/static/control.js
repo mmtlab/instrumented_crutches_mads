@@ -5,7 +5,7 @@
     'use strict';
     
     // Configuration - which side is the master (only change on restart)
-    const masterSide = 'right';  // Can be 'left' or 'right' - requires restart to change
+    const masterSide = 'right';  // Can be 'left', 'right' or 'external' - requires restart to change
     
     // API configuration
     const API_BASE = '';
@@ -14,6 +14,8 @@
     const state = {
         currentAcquisitionId: null,
         currentStatus: 'idle',
+        currentHdf5WriterStatus: 'unknown',
+        currentHdf5WriterStatusValue: '',
         timerInterval: null,
         startTime: null,
         currentConditionId: null,
@@ -137,6 +139,45 @@
         setTimeout(() => {
             elements.feedback.style.display = 'none';
         }, 5000);
+    }
+
+    function updateAcquisitionStatusDisplay(status, statusValue) {
+        if (!elements.status) return;
+
+        const normalizedStatus = (status || 'unknown').toString().toLowerCase();
+        
+        // Map status to badge color classes
+        elements.status.classList.remove('status-unknown', 'status-alive', 'status-dead', 'status-ready', 'status-running', 'status-stopped');
+
+        if (normalizedStatus === 'live') {
+            elements.status.classList.add('status-alive');
+        } else if (normalizedStatus === 'dead') {
+            elements.status.classList.add('status-dead');
+        } else {
+            elements.status.classList.add('status-unknown');
+        }
+
+        // Display status value text from hdf5_writer secondary line (like in Status panel)
+        let displayText = 'Unknown';
+        if (statusValue) {
+            const normalizedStatusValue = statusValue.toString().trim().toLowerCase();
+            if (normalizedStatusValue === 'idle') {
+                displayText = 'Ready';
+            } else if (normalizedStatusValue === 'connected') {
+                displayText = 'Ready';
+            } else if (normalizedStatusValue === 'unreachable') {
+                displayText = 'Unreachable';
+            } else if (normalizedStatusValue === 'recording') {
+                displayText = 'Recording';
+            } else {
+                displayText = statusValue;
+            }
+        }
+        
+        elements.status.textContent = displayText;
+
+        state.currentHdf5WriterStatus = normalizedStatus;
+        state.currentHdf5WriterStatusValue = statusValue || '';
     }
     
     // Track dismissed messages across refresh
@@ -367,12 +408,13 @@
     }
 
     function configureCalibrationPanel() {
+        const isExternalMaster = masterSide === 'external';
         const isMasterLeft = masterSide === 'left';
         if (elements.calibrationLeftTitle) {
-            elements.calibrationLeftTitle.textContent = `Left Crutch (${isMasterLeft ? 'Master' : 'Slave'})`;
+            elements.calibrationLeftTitle.textContent = `Left Crutch${(!isExternalMaster && isMasterLeft) ? ' (Master)' : ''}`;
         }
         if (elements.calibrationRightTitle) {
-            elements.calibrationRightTitle.textContent = `Right Crutch (${isMasterLeft ? 'Slave' : 'Master'})`;
+            elements.calibrationRightTitle.textContent = `Right Crutch${(!isExternalMaster && !isMasterLeft) ? ' (Master)' : ''}`;
         }
     }
 
@@ -526,6 +568,10 @@
         
         // Update status value if provided
         applyStatusValue(valueLabel, statusValue);
+
+        if (serviceName === 'hdf5_writer') {
+            updateAcquisitionStatusDisplay(status, statusValue);
+        }
     }
 
     function setTipStatus(side, status, statusValue) {
@@ -830,17 +876,6 @@
     
     // Update UI based on current state
     function updateUI() {
-        // Update status text and styling
-        const statusMap = {
-            'idle': 'Ready',
-            'running': 'Recording',
-            'stopped': 'Stopped'
-        };
-        const statusText = statusMap[state.currentStatus] || 'Ready';
-        elements.status.textContent = statusText;
-        elements.status.className = state.currentStatus === 'running' ? 'status-running' : 
-                                    state.currentStatus === 'stopped' ? 'status-stopped' : 'status-ready';
-        
         // Update acquisition ID - show user-friendly format
         if (state.currentAcquisitionId) {
             const num = state.currentAcquisitionId.replace('acq_', '');
@@ -1106,71 +1141,43 @@
         elements.toggleCalibrationBtn.classList.toggle('collapsed');
     }
 
+    function getMasterSectionTitle() {
+        return masterSide === 'external' ? 'Master (External)' : 'Master';
+    }
+
+    function getCrutchSectionTitle(side) {
+        const isMasterCrutch = masterSide !== 'external' && masterSide === side;
+        return `${side === 'left' ? 'Left' : 'Right'} Crutch${isMasterCrutch ? ' (Master)' : ''}`;
+    }
+
     // Configure Status panel based on masterSide
     function configureStatusPanel() {
         const cards = document.querySelectorAll('.node-status-card');
-        if (cards.length < 2) return;
-        
-        // Find cards by their content (which one contains tip_loadcell_left/right)
-        let leftCard = null;
-        let rightCard = null;
-        
-        cards.forEach(card => {
-            if (card.textContent.includes('tip_loadcell_left')) {
-                leftCard = card;
-            }
-            if (card.textContent.includes('tip_loadcell_right')) {
-                rightCard = card;
-            }
-        });
-        
-        if (!leftCard || !rightCard) {
-            console.warn('⚠ Could not identify left/right cards');
+        if (cards.length < 3) return;
+
+        const masterCard = document.getElementById('status-master-card') || cards[0];
+        const leftCard = document.getElementById('status-left-card') || cards[1];
+        const rightCard = document.getElementById('status-right-card') || cards[2];
+
+        if (!masterCard || !leftCard || !rightCard) {
+            console.warn('⚠ Could not identify status cards');
             return;
         }
-        
-        const isMasterLeft = masterSide === 'left';
-        const masterCard = isMasterLeft ? leftCard : rightCard;
-        
-        // Update card titles with correct roles (left always first, right always second)
+
+        // Update card titles with correct roles
+        const masterTitle = masterCard.querySelector('.node-status-card-title');
         const leftTitle = leftCard.querySelector('.node-status-card-title');
         const rightTitle = rightCard.querySelector('.node-status-card-title');
+
+        if (masterTitle) {
+            masterTitle.textContent = getMasterSectionTitle();
+        }
         
         if (leftTitle) {
-            leftTitle.textContent = `Left Crutch (${isMasterLeft ? 'Master' : 'Slave'})`;
+            leftTitle.textContent = getCrutchSectionTitle('left');
         }
         if (rightTitle) {
-            rightTitle.textContent = `Right Crutch (${isMasterLeft ? 'Slave' : 'Master'})`;
-        }
-        
-        // Move Coordinator, Logger, Eye-tracker and Separator items to master card
-        // Find the items
-        const coordinatorNode = document.querySelector('[id="status-coordinator"]');
-        const loggerNode = document.querySelector('[id="status-hdf5"]');
-        const eyetrackerNode = document.querySelector('[id="status-eyetracker"]');
-        const tipNode = masterCard.querySelector('[id*="tip-"]');
-        const handleNode = masterCard.querySelector('[id*="handle-"]');
-
-        const coordinatorItem = coordinatorNode ? coordinatorNode.closest('.node-status-item') : null;
-        const loggerItem = loggerNode ? loggerNode.closest('.node-status-item') : null;
-        const eyetrackerItem = eyetrackerNode ? eyetrackerNode.closest('.node-status-item') : null;
-        const separator = leftCard.querySelector('.node-status-separator');
-        const tipItem = tipNode ? tipNode.closest('.node-status-item') : null;
-        const handleItem = handleNode ? handleNode.closest('.node-status-item') : null;
-        const sensorAnchor = handleItem || tipItem;
-        
-        if (coordinatorItem && loggerItem && eyetrackerItem && separator && sensorAnchor) {
-            // Remove from their current location
-            coordinatorItem.remove();
-            loggerItem.remove();
-            eyetrackerItem.remove();
-            separator.remove();
-            
-            // Insert into master card maintaining order: Coordinator, Logger, Eye-tracker, Separator, Handle/Tip block
-            sensorAnchor.parentNode.insertBefore(coordinatorItem, sensorAnchor);
-            coordinatorItem.parentNode.insertBefore(loggerItem, sensorAnchor);
-            loggerItem.parentNode.insertBefore(eyetrackerItem, sensorAnchor);
-            eyetrackerItem.parentNode.insertBefore(separator, sensorAnchor);
+            rightTitle.textContent = getCrutchSectionTitle('right');
         }
         
         console.log(`✓ Status panel configured: master=${masterSide}`);

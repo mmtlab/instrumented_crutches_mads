@@ -184,8 +184,10 @@ class PpgAgent:
         health_period_s = max(self.health_status_period, 1) / 1000.0
         sample_period_s = max(self.period, 1) / 1000.0
 
-        next_health_ts = time.monotonic() + health_period_s
-        next_sample_ts = time.monotonic() + sample_period_s
+        
+        now = time.monotonic()
+        next_health_ts = now + health_period_s
+        next_sample_ts = now + sample_period_s
 
         try:
             while True:

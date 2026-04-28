@@ -22,7 +22,7 @@
             <div class="status">
                 <div>
                     <strong>Status</strong>
-                    <span id="status" class="status-ready">Ready</span>
+                    <span id="status" class="status-unknown">Unknown</span>
                 </div>
                 <div>
                     <strong>Recording ID</strong>
@@ -166,16 +166,52 @@
                 <button id="toggle-node-status-btn" class="toggle-btn" title="Collapse/Expand" aria-label="Toggle status panel"></button>
             </div>
             <div id="node-status-content" class="section-content">
-                <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; align-items: center;">
-                    <button id="datetime-update-btn" class="btn">Update Datetime</button>
-                    <span style="font-size: 13px; color: #64748b;">
-                        <strong>Last datetime update:</strong>
-                        <span id="coordinator-last-update">—</span>
-                    </span>
-                </div>
                 <div class="node-status-grid">
-                    <div class="node-status-card">
-                        <div class="node-status-card-title">Left Crutch (Master)</div>
+                    <div id="status-master-card" class="node-status-card">
+                        <div class="node-status-card-title">Master</div>
+                        <div class="node-status-master-layout">
+                            <div class="node-status-master-spacer" aria-hidden="true"></div>
+                            <div class="node-status-master-content">
+                                <div class="node-status-item node-status-item-datetime">
+                                    <div class="node-status-item-label">Datetime</div>
+                                    <div class="node-status-item-content">
+                                        <button id="datetime-update-btn" class="btn">Update Datetime</button>
+                                        <span class="node-status-datetime-feedback">
+                                            <strong>Last datetime update:</strong>
+                                            <span id="coordinator-last-update">—</span>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="node-status-item">
+                                    <div class="node-status-item-label">Coordinator</div>
+                                    <div id="status-coordinator" class="node-status-indicator node-status-unknown">
+                                        <span class="node-status-indicator-name">coordinator</span>
+                                        <span id="status-coordinator-state" class="node-status-indicator-state">Unknown</span>
+                                    </div>
+                                    <span id="status-coordinator-value" class="node-status-value"></span>
+                                </div>
+                                <div class="node-status-item">
+                                    <div class="node-status-item-label">Eye-tracker</div>
+                                    <div id="status-eyetracker" class="node-status-indicator node-status-disconnected">
+                                        <span class="node-status-indicator-name">pupil_neon</span>
+                                        <span id="status-eyetracker-state" class="node-status-indicator-state">Disconnected</span>
+                                    </div>
+                                    <span id="status-eyetracker-value" class="node-status-value"></span>
+                                </div>
+                                <div class="node-status-item">
+                                    <div class="node-status-item-label">Logger</div>
+                                    <div id="status-hdf5" class="node-status-indicator node-status-unknown">
+                                        <span class="node-status-indicator-name">hdf5_writer</span>
+                                        <span id="status-hdf5-state" class="node-status-indicator-state">Unknown</span>
+                                    </div>
+                                    <span id="status-hdf5-value" class="node-status-value"></span>
+                                </div>
+                            </div>
+                            <div class="node-status-master-spacer" aria-hidden="true"></div>
+                        </div>
+                    </div>
+                    <div id="status-left-card" class="node-status-card">
+                        <div class="node-status-card-title">Left Crutch</div>
                         <div class="node-status-item node-status-item-battery">
                             <div class="battery-status" id="battery-left">
                                 <div class="battery-status-header">
@@ -188,31 +224,6 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="node-status-item">
-                            <div class="node-status-item-label">Coordinator</div>
-                            <div id="status-coordinator" class="node-status-indicator node-status-unknown">
-                                <span class="node-status-indicator-name">coordinator</span>
-                                <span id="status-coordinator-state" class="node-status-indicator-state">Unknown</span>
-                            </div>
-                            <span id="status-coordinator-value" class="node-status-value"></span>
-                        </div>
-                        <div class="node-status-item">
-                            <div class="node-status-item-label">Eye-tracker</div>
-                            <div id="status-eyetracker" class="node-status-indicator node-status-disconnected">
-                                <span class="node-status-indicator-name">pupil_neon</span>
-                                <span id="status-eyetracker-state" class="node-status-indicator-state">Disconnected</span>
-                            </div>
-                            <span id="status-eyetracker-value" class="node-status-value"></span>
-                        </div>
-                        <div class="node-status-item">
-                            <div class="node-status-item-label">Logger</div>
-                            <div id="status-hdf5" class="node-status-indicator node-status-unknown">
-                                <span class="node-status-indicator-name">hdf5_writer</span>
-                                <span id="status-hdf5-state" class="node-status-indicator-state">Unknown</span>
-                            </div>
-                            <span id="status-hdf5-value" class="node-status-value"></span>
-                        </div>
-                        <div class="node-status-separator"></div>
                         <div class="node-status-item">
                             <div class="node-status-item-label">Handle</div>
                             <div id="handle-left" class="node-status-indicator node-status-unknown">
@@ -239,7 +250,7 @@
                         </div>
                     </div>
                     <div class="node-status-card">
-                        <div class="node-status-card-title">Right Crutch (Slave)</div>
+                        <div class="node-status-card-title">Right Crutch</div>
                         <div class="node-status-item node-status-item-battery">
                             <div class="battery-status" id="battery-right">
                                 <div class="battery-status-header">
