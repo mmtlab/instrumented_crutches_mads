@@ -93,12 +93,16 @@
         ppgRightValue: document.getElementById('ppg-right-value'),
         batteryLeft: document.getElementById('battery-left'),
         batteryRight: document.getElementById('battery-right'),
+        batteryExternal: document.getElementById('battery-external'),
         batteryLeftValue: document.getElementById('battery-left-value'),
         batteryRightValue: document.getElementById('battery-right-value'),
+        batteryExternalValue: document.getElementById('battery-external-value'),
         batteryLeftFill: document.getElementById('battery-left-fill'),
         batteryRightFill: document.getElementById('battery-right-fill'),
+        batteryExternalFill: document.getElementById('battery-external-fill'),
         batteryLeftEta: document.getElementById('battery-left-eta'),
         batteryRightEta: document.getElementById('battery-right-eta'),
+        batteryExternalEta: document.getElementById('battery-external-eta'),
         statusCoordinator: document.getElementById('status-coordinator'),
         statusCoordinatorState: document.getElementById('status-coordinator-state'),
         statusCoordinatorValue: document.getElementById('status-coordinator-value'),
@@ -472,11 +476,23 @@
     }
 
     function setBatteryStatus(side, batteryInfo) {
-        const isLeft = side === 'left';
-        const container = isLeft ? elements.batteryLeft : elements.batteryRight;
-        const valueLabel = isLeft ? elements.batteryLeftValue : elements.batteryRightValue;
-        const fill = isLeft ? elements.batteryLeftFill : elements.batteryRightFill;
-        const eta = isLeft ? elements.batteryLeftEta : elements.batteryRightEta;
+        let container, valueLabel, fill, eta;
+        if (side === 'left') {
+            container = elements.batteryLeft;
+            valueLabel = elements.batteryLeftValue;
+            fill = elements.batteryLeftFill;
+            eta = elements.batteryLeftEta;
+        } else if (side === 'right') {
+            container = elements.batteryRight;
+            valueLabel = elements.batteryRightValue;
+            fill = elements.batteryRightFill;
+            eta = elements.batteryRightEta;
+        } else if (side === 'external') {
+            container = elements.batteryExternal;
+            valueLabel = elements.batteryExternalValue;
+            fill = elements.batteryExternalFill;
+            eta = elements.batteryExternalEta;
+        }
 
         if (!container || !valueLabel || !fill || !eta) return;
 
@@ -1270,6 +1286,7 @@
 
             setBatteryStatus('left', statusState.battery_left);
             setBatteryStatus('right', statusState.battery_right);
+            setBatteryStatus('external', statusState.battery_external);
 
             // Update each component's status indicator and value
             if (statusState.coordinator) {

@@ -145,16 +145,36 @@ public:
 
     // if the input contains a field that must be recorded, we need to continue
     // Otherwise we need to retry to avoid saving the default field timestamp when there is no other field to record, which can lead to creating empty files or files with only default fields, which can be misleading and take up unnecessary space
+    auto contains_keypath = [this](const json &node, const string &keypath) {
+      const string separator = _converter.keypath_separator();
+      size_t start = 0;
+      size_t end = keypath.find(separator);
+      const json *current = &node;
+
+      while (end != string::npos) {
+        const string key = keypath.substr(start, end - start);
+        if (!current->is_object() || !current->contains(key)) {
+          return false;
+        }
+        current = &(*current)[key];
+        start = end + separator.length();
+        end = keypath.find(separator, start);
+      }
+
+      const string leaf_key = keypath.substr(start);
+      return current->is_object() && current->contains(leaf_key);
+    };
+
     bool field_to_record_found = false;
     for (const auto &keypath : _converter.keypaths(topic)) {
       
       // skip default fields
-      if (keypath == "timestamp") {
+      if (keypath == "timestamp" || keypath == "side") {
         continue; 
       }
       
       // check fields other than timestamp
-      if (input.contains(keypath)) {
+      if (contains_keypath(input, keypath)) {
         field_to_record_found = true;
         break;
       } 
