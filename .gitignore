@@ -6,6 +6,7 @@
 /handle_loadcell/build/
 /web_server/data/
 analysis/graphs/
+analysis/csv/
 
 # just for development
 /filter_template
