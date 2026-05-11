@@ -195,8 +195,12 @@ public:
         cout << _error << std::endl;
         return return_type::error;
       }
-    } 
+    } else {
+      return return_type::retry; 
+    }
     
+    counter++;
+    cout << "cycle " << counter << ": Data loaded for topic: " << topic << std::endl;
     return return_type::success;
   }
 
@@ -292,6 +296,8 @@ public:
 private:
   // Define the fields that are used to store internal resources
   JsonToHdf5Converter _converter; // Converter for JSON to HDF5
+
+  uint32_t counter = 0; // A simple counter to keep track of the number of times load_data is called, used for demonstration purposes, can be removed if not needed
 
   // settings variables
   string _folder_path = "";

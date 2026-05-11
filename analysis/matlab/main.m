@@ -3,7 +3,16 @@ close all
 clc
 
 % Configuration
-idx = 27;
+idx = 2;
+
+% Plot enable/disable flags
+config.enablePPG = true;
+config.enablePupilNeon = false;
+config.enableUPS = false;
+config.enableHandleLoadcell = false;
+config.enableHandleLoadcellPairs = false;
+config.enableTipLoadcell = false;
+config.enableTipHandleCombined = false;
 
 scriptDir = fileparts(mfilename('fullpath'));
 analysisDir = fileparts(scriptDir);
@@ -64,10 +73,28 @@ for g = 1:numel(info.Groups)
     groupInfo = info.Groups(g);
     groupPath = string(groupInfo.Name);     % e.g. "/ppg"
     groupName = extractAfter(groupPath, '/');
-    plot_group(filename, groupPath, groupName, idx, outputDir, csvOutputDir, coordinatorLabels, coordinatorTimestamps);
+    % Check if this group should be plotted based on config
+    shouldPlot = false;
+    if groupName == "ppg" && config.enablePPG
+        shouldPlot = true;
+    elseif groupName == "pupil_neon" && config.enablePupilNeon
+        shouldPlot = true;
+    elseif groupName == "ups" && config.enableUPS
+        shouldPlot = true;
+    elseif groupName == "handle_loadcell" && config.enableHandleLoadcell
+        shouldPlot = true;
+    elseif groupName == "tip_loadcell" && config.enableTipLoadcell
+        shouldPlot = true;
+    end
+    
+    if shouldPlot
+        plot_group(filename, groupPath, groupName, idx, outputDir, csvOutputDir, coordinatorLabels, coordinatorTimestamps, config);
+    end
 end
 
-plot_tip_handle_combined(filename, idx, outputDir);
+if config.enableTipHandleCombined
+    plot_tip_handle_combined(filename, idx, outputDir);
+end
 
 
 function print_h5_fields(nodeInfo, prefix)
@@ -94,7 +121,7 @@ end
 end
 
 
-function plot_group(filename, groupPath, groupName, idx, outputDir, csvOutputDir, coordinatorLabels, coordinatorTimestamps)
+function plot_group(filename, groupPath, groupName, idx, outputDir, csvOutputDir, coordinatorLabels, coordinatorTimestamps, config)
 datasets = h5info(filename, groupPath).Datasets;
 datasetNames = string({datasets.Name});
 
@@ -204,7 +231,7 @@ outName = sprintf('acq_%d_%s.png', idx, safeGroupName);
 outPath = fullfile(outputDir, outName);
 exportgraphics(fig, outPath, 'Resolution', 150);
 
-if groupName == "handle_loadcell"
+if groupName == "handle_loadcell" && config.enableHandleLoadcellPairs
     plot_handle_loadcell_pairs(filename, groupPath, idx, outputDir, csvOutputDir, timestampsRaw, timeSeconds, sides, leftColor, rightColor, coordinatorLabels, coordinatorTimestamps, tsAll, timingInfo);
 end
 end
@@ -544,63 +571,47 @@ rightMask = sides == "right";
 leftIndices = find(leftMask, 1, 'first');
 rightIndices = find(rightMask, 1, 'first');
 
-% Check if time difference between first samples is > 5 seconds
-usePerSideT0 = false;
+% Align timestamps between sides only when the initial offset suggests a failed NTP sync
 if ~isempty(leftIndices) && ~isempty(rightIndices)
     firstLeftTime = ts(leftIndices);
     firstRightTime = ts(rightIndices);
-    timeDiff = abs(seconds(firstLeftTime - firstRightTime));
+    initialOffset = abs(seconds(firstLeftTime - firstRightTime));
     
-    if timeDiff > 5
-        usePerSideT0 = true;
+    if initialOffset > 60
+        % Determine which first timestamp is more recent
+        if firstLeftTime > firstRightTime
+            % Left is more recent, shift right forward
+            timeDiff = seconds(firstLeftTime - firstRightTime);
+            ts(rightMask) = ts(rightMask) + seconds(timeDiff);
+            fprintf('[SYNC] Left side is %.3f seconds ahead. Correcting right side timestamps.\n', timeDiff);
+        elseif firstRightTime > firstLeftTime
+            % Right is more recent, shift left forward
+            timeDiff = seconds(firstRightTime - firstLeftTime);
+            ts(leftMask) = ts(leftMask) + seconds(timeDiff);
+            fprintf('[SYNC] Right side is %.3f seconds ahead. Correcting left side timestamps.\n', timeDiff);
+        end
     end
 end
 
-tSec = zeros(n, 1);
+% Use common t0 with aligned timestamps
+leftTimes = unique(ts(leftMask));
+rightTimes = unique(ts(rightMask));
+common = intersect(leftTimes, rightTimes);
 
-if usePerSideT0
-    % Use separate t0 for each side (per-side relative times)
-    if ~isempty(leftIndices)
-        t0_left = ts(leftIndices);
-        tSec(leftMask) = seconds(ts(leftMask) - t0_left);
-    end
-    if ~isempty(rightIndices)
-        t0_right = ts(rightIndices);
-        tSec(rightMask) = seconds(ts(rightMask) - t0_right);
-    end
+if ~isempty(common)
+    t0 = common(1);
 else
-    % Use common t0 (original behavior)
-    leftTimes = unique(ts(leftMask));
-    rightTimes = unique(ts(rightMask));
-    common = intersect(leftTimes, rightTimes);
-    
-    if ~isempty(common)
-        t0 = common(1);
-    else
-        t0 = ts(1);
-    end
-    
-    tSec = seconds(ts - t0);
+    t0 = ts(1);
 end
+
+tSec = seconds(ts - t0);
 
 % Fill timingInfo
 timingInfo = struct();
-timingInfo.usePerSideT0 = usePerSideT0;
-if exist('t0_left', 'var')
-    timingInfo.t0_left = t0_left;
-else
-    timingInfo.t0_left = NaT;
-end
-if exist('t0_right', 'var')
-    timingInfo.t0_right = t0_right;
-else
-    timingInfo.t0_right = NaT;
-end
-if exist('t0', 'var')
-    timingInfo.t0_common = t0;
-else
-    timingInfo.t0_common = NaT;
-end
+timingInfo.usePerSideT0 = false;
+timingInfo.t0_left = NaT;
+timingInfo.t0_right = NaT;
+timingInfo.t0_common = t0;
 
 end
 

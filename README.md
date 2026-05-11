@@ -211,3 +211,11 @@ After recording:
 
 - **View Data**: select Subject, Session, and Recording to display charts.
 - **Download**: download CSV files (`force_ID.csv` and `info_ID.csv`).
+
+
+Only master (no crutch)
+sudo cp templates/mads-broker.service templates/mads-web_server.service templates/mads-coordinator.service templates/mads-status_handler.service templates/mads-hdf5_writer.service templates/mads-eye_tracker.service templates/mads-network_handler.service /etc/systemd/system/
+
+sudo systemctl enable mads-broker.service mads-web_server.service mads-coordinator.service mads-status_handler.service mads-hdf5_writer.service mads-eye_tracker.service mads-network_handler.service
+
+mads-filter hdf5_writer.plugin -b -o folder_path="C:\mirrorworld\instrumented_crutches_mads\web_server\data"

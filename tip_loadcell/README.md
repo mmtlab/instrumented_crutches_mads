@@ -59,7 +59,7 @@ sub_topic = ["coordinator"]
 pub_topic = "tip_loadcell"
 datapin = 6
 clockpin = 26
-period = 10
+period = 5 # it must be lower than 10 ms otherwise the HX711 will enter power down mode, which causes a delay of ~100 ms when reading the next value (it wakes up and takes ~100 ms to stabilize the readings)
 side = "unknown" # used to select scaling factor
 health_status_period = 500 # ms
 
@@ -71,6 +71,7 @@ right = 1.2 # debug value
 
 All settings are optional; if omitted, the default values are used.
 
+**Note:** The HX711 sampling frequency must remain above 80 Hz to prevent power-down mode. We recommend setting the period to 5 ms.
 
 ## Executable demo
 
