@@ -588,6 +588,13 @@ h2 {
     color: #991b1b;
 }
 
+/* Syncing state (yellow/orange) */
+.node-status-syncing {
+    background: #fffbeb;
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
 .calibration-toolbar {
     display: flex;
     align-items: center;

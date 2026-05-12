@@ -112,6 +112,12 @@
         statusHdf5: document.getElementById('status-hdf5'),
         statusHdf5State: document.getElementById('status-hdf5-state'),
         statusHdf5Value: document.getElementById('status-hdf5-value'),
+        syncLeft: document.getElementById('sync-left'),
+        syncLeftState: document.getElementById('sync-left-state'),
+        syncLeftValue: document.getElementById('sync-left-value'),
+        syncRight: document.getElementById('sync-right'),
+        syncRightState: document.getElementById('sync-right-state'),
+        syncRightValue: document.getElementById('sync-right-value'),
         toggleNodeStatusBtn: document.getElementById('toggle-node-status-btn'),
         toggleCalibrationBtn: document.getElementById('toggle-calibration-btn'),
         datetimeUpdateBtn: document.getElementById('datetime-update-btn'),
@@ -720,6 +726,55 @@
         applyStatusValue(valueLabel, statusValue);
     }
 
+    function setSyncStatus(side, statusOrMessage) {
+        const isLeft = side === 'left';
+        const indicator = isLeft ? elements.syncLeft : elements.syncRight;
+        const stateLabel = isLeft ? elements.syncLeftState : elements.syncRightState;
+        const valueLabel = isLeft ? elements.syncLeftValue : elements.syncRightValue;
+
+        if (!indicator || !stateLabel) return;
+
+        // Normalize input
+        const txt = (statusOrMessage || '').toString().toLowerCase();
+
+        // Clear previous indicator classes
+        // remove known status classes before applying new
+        indicator.classList.remove(...tipStatusClasses, 'node-status-connected', 'node-status-disconnected', 'node-status-syncing');
+
+        // Prefer exact 'synchronized' match before 'synchronizing' to avoid substring collisions
+        if (txt.includes('synchronized')) {
+            indicator.classList.add('node-status-connected');
+            stateLabel.textContent = 'Synchronized';
+            if (valueLabel) {
+                valueLabel.textContent = '';
+                valueLabel.classList.remove(...statusValueClasses);
+                valueLabel.classList.add('node-status-value-ready');
+            }
+            console.log(`✅ setSyncStatus(${side}) -> Synchronized ("${statusOrMessage}")`);
+            return;
+        }
+
+        if (txt.includes('synchronizing')) {
+            indicator.classList.add('node-status-syncing');
+            stateLabel.textContent = 'Synchronizing...';
+            if (valueLabel) {
+                valueLabel.textContent = '';
+                valueLabel.classList.remove(...statusValueClasses);
+                valueLabel.classList.add('node-status-value-attn');
+            }
+            console.log(`⚠ setSyncStatus(${side}) -> Synchronizing ("${statusOrMessage}")`);
+            return;
+        }
+
+        // Fallback
+        indicator.classList.add('node-status-unknown');
+        stateLabel.textContent = 'Unknown';
+        if (valueLabel) {
+            valueLabel.textContent = '';
+            valueLabel.classList.remove(...statusValueClasses);
+        }
+    }
+
     function updateSensorStatusFromMessage(msg) {
         const level = (msg.level || '').toString().toLowerCase();
         const text = (msg.message || '').toString().trim().toLowerCase();
@@ -752,6 +807,18 @@
                 console.warn(`⚠️ Eye-tracker message not recognized: "${text}"`);
                 return;
             }
+        }
+
+        // Handle sync handler messages (sync_handler_left / sync_handler_right)
+        if (sourceNorm.includes('sync_handler') || sourceNorm === 'sync') {
+            const syncSide = getCrutchSideFromMessage(msg) || getCrutchSideFromSource(sourceNorm) || '';
+            // Prefer message text, fallback to status field
+            const msgText = (msg.message || msg.text || msg.status || '').toString();
+            console.log(`🔁 Sync message detected: source="${sourceNorm}", side="${syncSide}", text="${msgText}"`);
+            if (syncSide === 'left' || syncSide === 'right') {
+                setSyncStatus(syncSide, msgText);
+            }
+            return;
         }
 
         // Handle tip loadcell sensors and master services
@@ -1352,6 +1419,17 @@
                 if (displayMessage) {
                     updateOffsetDisplay(displayMessage, statusState.handle_loadcell_right.source, statusState.handle_loadcell_right.side, displayTimestamp);
                 }
+            }
+
+            // Sync handler status (left/right)
+            if (statusState.sync_handler_left) {
+                const {message, status: statusValue} = statusState.sync_handler_left;
+                setSyncStatus('left', message || statusValue);
+            }
+
+            if (statusState.sync_handler_right) {
+                const {message, status: statusValue} = statusState.sync_handler_right;
+                setSyncStatus('right', message || statusValue);
             }
 
             if (statusState.ppg_left) {
