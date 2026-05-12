@@ -256,6 +256,26 @@ public:
               
             }
 
+            // handle synchronization status messages from sync_handler topic
+            if (input["info"].contains("synchronized") && input["info"].contains("synchronizing") && source == "sync_handler") {
+              
+              if (input["info"]["synchronized"].is_boolean() && input["info"]["synchronizing"].is_boolean()) {
+                bool synchronized = input["info"]["synchronized"].get<bool>();
+                bool synchronizing = input["info"]["synchronizing"].get<bool>();
+
+                if (!synchronizing) {
+                  message = string("Device is synchronized: ") + (synchronized ? "true" : "false");
+                } else {
+                  message = "Device is synchronizing";
+                }
+
+              } else {
+                // just ignore it if the format is not ok
+                return return_type::retry;
+              }
+              
+            }
+
             // Add here any other info to handle
           }
 

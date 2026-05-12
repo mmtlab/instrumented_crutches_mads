@@ -63,7 +63,6 @@ On the slave crutch (i.e. left crutch), copy the service file to `/etc/systemd/s
 ```bash
 sudo cp templates/left/mads-tip_loadcell.service templates/left/mads-handle_loadcell.service templates/left/mads-ups.service templates/left/mads-ppg.service /etc/systemd/system/
 ```
-
 Then enable it:
 
 ```bash
