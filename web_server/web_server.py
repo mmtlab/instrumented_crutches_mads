@@ -1818,9 +1818,8 @@ async def get_status_state():
                 organized_state["battery_left"] = status_view
             elif side == "right" and has_battery_data:
                 organized_state["battery_right"] = status_view
-            elif has_battery_data:
-                organized_state["battery_left"] = status_view
-                organized_state["battery_right"] = status_view
+            elif side == "external" and has_battery_data:
+                organized_state["battery_external"] = status_view
         elif source_lower.startswith("tip_loadcell") or source_lower == "loadcell" or source_lower.startswith("loadcell_"):
             if status_view.get("side") == "left":
                 organized_state["tip_loadcell_left"] = status_view
