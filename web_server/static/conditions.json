@@ -1,13 +1,13 @@
 {
   "conditions": [
     {
-      "id": "balancing",
-      "label": "Balancing",
+      "id": "balance",
+      "label": "Balance",
       "color": "#3b82f6"
     },
     {
-      "id": "walking",
-      "label": "Walking",
+      "id": "walk",
+      "label": "Walk",
       "color": "#8b5cf6"
     },
     {
@@ -21,34 +21,14 @@
       "color": "#10b981"
     },
     {
-      "id": "left_turning",
-      "label": "Left Turning",
-      "color": "#f97316"
-    },
-    {
-      "id": "right_turning",
-      "label": "Right Turning",
-      "color": "#f59e0b"
-    },
-    {
-      "id": "stair_up",
-      "label": "Stair (up)",
+      "id": "stair",
+      "label": "Stair",
       "color": "#ef4444"
     },
     {
-      "id": "stair_down",
-      "label": "Stair (down)",
-      "color": "#ec4899"
-    },
-    {
-      "id": "ramp_up",
-      "label": "Ramp (up)",
+      "id": "ramp",
+      "label": "Ramp",
       "color": "#06b6d4"
-    },
-    {
-      "id": "ramp_down",
-      "label": "Ramp (down)",
-      "color": "#14b8a6"
     },
     {
       "id": "last_condition_not_valid",

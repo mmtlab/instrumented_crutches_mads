@@ -5,7 +5,7 @@
     'use strict';
     
     // Configuration - which side is the master (only change on restart)
-    const masterSide = 'right';  // Can be 'left', 'right' or 'external' - requires restart to change
+    const masterSide = 'external';  // Can be 'left', 'right' or 'external' - requires restart to change
     
     // API configuration
     const API_BASE = '';
