@@ -3,13 +3,13 @@ close all
 clc
 
 % Configuration
-idx = 2;
+idx = 1;
 
 % Plot enable/disable flags
-config.enablePPG = true;
+config.enablePPG = false;
 config.enablePupilNeon = false;
 config.enableUPS = false;
-config.enableHandleLoadcell = false;
+config.enableHandleLoadcell = true;
 config.enableHandleLoadcellPairs = false;
 config.enableTipLoadcell = false;
 config.enableTipHandleCombined = false;
@@ -189,7 +189,7 @@ for s = 1:numel(signalNames)
     title(signalName, 'Interpreter', 'none');
     ylabel(signalName, 'Interpreter', 'none');
     grid on
-    legend('Location', 'best');
+    %legend('Location', 'best');
 end
 
 validAx = ax(isgraphics(ax));
@@ -318,23 +318,23 @@ handleRightMask = handleSides == "right";
 
 axLeft = nexttile(tl, 1);
 hold(axLeft, 'on')
-plot(axLeft, tipTimeSeconds(tipLeftMask), tipForce(tipLeftMask), '.', 'Color', leftColor, 'DisplayName', 'tip_loadcell', 'MarkerSize', 8, 'LineStyle', 'none');
-plot(axLeft, handleTimeSeconds(handleLeftMask), handleForce(handleLeftMask), 'x', 'Color', [0.2, 0.2, 0.2], 'DisplayName', 'handle_loadcell force.up_back', 'MarkerSize', 6, 'LineStyle', 'none');
+plot(axLeft, tipTimeSeconds(tipLeftMask), tipForce(tipLeftMask), '-', 'Color', leftColor, 'DisplayName', 'tip_loadcell', 'LineWidth', 1.5);
+plot(axLeft, handleTimeSeconds(handleLeftMask), handleForce(handleLeftMask), '-', 'Color', [0.2, 0.2, 0.2], 'DisplayName', 'handle_loadcell force.up_back', 'LineWidth', 1.5);
 grid(axLeft, 'on')
 xlabel(axLeft, 'time [s]')
 ylabel(axLeft, 'force [N]')
 title(axLeft, 'left')
-legend(axLeft, 'Location', 'best')
+%legend(axLeft, 'Location', 'best')
 
 axRight = nexttile(tl, 2);
 hold(axRight, 'on')
-plot(axRight, tipTimeSeconds(tipRightMask), tipForce(tipRightMask), '.', 'Color', rightColor, 'DisplayName', 'tip_loadcell', 'MarkerSize', 8, 'LineStyle', 'none');
-plot(axRight, handleTimeSeconds(handleRightMask), handleForce(handleRightMask), 'x', 'Color', [0.2, 0.2, 0.2], 'DisplayName', 'handle_loadcell force.up_back', 'MarkerSize', 6, 'LineStyle', 'none');
+plot(axRight, tipTimeSeconds(tipRightMask), tipForce(tipRightMask), '-', 'Color', rightColor, 'DisplayName', 'tip_loadcell', 'LineWidth', 1.5);
+plot(axRight, handleTimeSeconds(handleRightMask), handleForce(handleRightMask), '-', 'Color', [0.2, 0.2, 0.2], 'DisplayName', 'handle_loadcell force.up_back', 'LineWidth', 1.5);
 grid(axRight, 'on')
 xlabel(axRight, 'time [s]')
 ylabel(axRight, 'force [N]')
 title(axRight, 'right')
-legend(axRight, 'Location', 'best')
+%legend(axRight, 'Location', 'best')
 
 linkaxes([axLeft, axRight], 'x');
 

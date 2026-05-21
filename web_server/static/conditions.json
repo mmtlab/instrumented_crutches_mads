@@ -1,6 +1,11 @@
 {
   "conditions": [
     {
+      "id": "rest",
+      "label": "Rest",
+      "color": "#9c9c9c"
+    },
+    {
       "id": "balance",
       "label": "Balance",
       "color": "#3b82f6"

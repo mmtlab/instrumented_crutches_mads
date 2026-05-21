@@ -970,6 +970,9 @@ async def get_acquisition_data(acquisition_id: str):
     path = data_file_path(acquisition_id)
     if path.exists():
         hdf5_data = read_hdf5_data(path)
+        if "samples" not in hdf5_data:
+            hdf5_data["samples"] = 0
+
         response_data = {
             "acquisition_id": acquisition_id,
             "status": acq.get("status", "completed"),

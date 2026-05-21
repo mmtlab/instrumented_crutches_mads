@@ -19,6 +19,8 @@
         timerInterval: null,
         startTime: null,
         currentConditionId: null,
+        currentConditionTimestamp: null,
+        conditionTimerInterval: null,
         datetimeHealthStatusTimeoutId: null
     };
 
@@ -41,6 +43,7 @@
         status: document.getElementById('status'),
         acquisitionId: document.getElementById('acquisition-id'),
         timer: document.getElementById('timer'),
+        conditionTimer: document.getElementById('condition-timer'),
         currentCondition: document.getElementById('current-condition'),
         startBtn: document.getElementById('start-btn'),
         stopBtn: document.getElementById('stop-btn'),
@@ -924,19 +927,26 @@
         const secs = seconds % 60;
         return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
+
+    function setTimerDisplays(value) {
+        elements.timer.textContent = value;
+        if (elements.conditionTimer) {
+            elements.conditionTimer.textContent = value;
+        }
+    }
     
     // Update timer display
     function updateTimer() {
         if (state.startTime) {
             const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
-            elements.timer.textContent = formatTime(elapsed);
+            setTimerDisplays(formatTime(elapsed));
         }
     }
     
     // Start timer
     function startTimer() {
         state.startTime = Date.now();
-        elements.timer.textContent = '00:00';
+        setTimerDisplays('00:00');
         if (state.timerInterval) clearInterval(state.timerInterval);
         state.timerInterval = setInterval(updateTimer, 1000);
     }
@@ -954,7 +964,7 @@
     function resetTimer() {
         stopTimer();
         state.startTime = null;
-        elements.timer.textContent = '00:00';
+        setTimerDisplays('00:00');
     }
     
     // Update UI based on current state
@@ -974,6 +984,44 @@
         const isRunning = state.currentStatus === 'running';
         elements.startBtn.disabled = isRunning;
         elements.stopBtn.disabled = !isRunning;
+    }
+
+    async function syncRunningAcquisitionTimer() {
+        try {
+            const response = await fetch(`${API_BASE}/acquisitions`);
+            if (!response.ok) {
+                return;
+            }
+
+            const data = await response.json();
+            const currentAcquisitionId = data.current_acquisition;
+            if (!currentAcquisitionId) {
+                return;
+            }
+
+            const runningAcquisition = (data.acquisitions || []).find((acq) => acq.id === currentAcquisitionId);
+            if (!runningAcquisition || !runningAcquisition.start_time) {
+                return;
+            }
+
+            const startTime = Date.parse(runningAcquisition.start_time);
+            if (Number.isNaN(startTime)) {
+                return;
+            }
+
+            state.currentAcquisitionId = currentAcquisitionId;
+            state.currentStatus = 'running';
+            state.startTime = startTime;
+
+            if (!state.timerInterval) {
+                state.timerInterval = setInterval(updateTimer, 1000);
+            }
+
+            updateTimer();
+            updateUI();
+        } catch (error) {
+            console.error('Sync running acquisition timer error:', error);
+        }
     }
     
     // Start acquisition
@@ -1019,6 +1067,9 @@
             if (data.status === 'started') {
                 state.currentAcquisitionId = data.acquisition_id;
                 state.currentStatus = 'running';
+                if (state.currentConditionId) {
+                    state.currentConditionTimestamp = Date.now();
+                }
                 startTimer();
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
@@ -1060,6 +1111,7 @@
                 state.currentStatus = 'stopped';
                 state.currentCondition = null; // Reset condition after stop
                 state.currentConditionId = null;
+                state.currentConditionTimestamp = null;
                 stopTimer();
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
@@ -1538,11 +1590,19 @@
                 if (lastId) {
                     state.currentConditionId = lastId;
                     state.currentCondition = lastCondition.condition || lastId;
+                    if (lastCondition.timestamp) {
+                        const ts = Date.parse(lastCondition.timestamp);
+                        if (!Number.isNaN(ts)) state.currentConditionTimestamp = ts;
+                    }
                 } else {
                     state.currentCondition = lastCondition.condition;
                     const resolvedId = resolveConditionIdByLabel(state.currentCondition);
                     if (resolvedId) {
                         state.currentConditionId = resolvedId;
+                        if (lastCondition.timestamp) {
+                            const ts = Date.parse(lastCondition.timestamp);
+                            if (!Number.isNaN(ts)) state.currentConditionTimestamp = ts;
+                        }
                     }
                 }
             } else {
@@ -1601,11 +1661,14 @@
             conditionsConfig.forEach(condition => {
                 const btn = document.createElement('button');
                 btn.className = 'condition-btn';
-                btn.textContent = condition.label;
                 btn.style.backgroundColor = condition.color;
                 btn.dataset.conditionId = condition.id;
                 btn.dataset.conditionLabel = condition.label;
                 btn.onclick = () => selectCondition(condition.id, condition.label);
+                btn.innerHTML = `
+                    <div class="condition-label">${condition.label}</div>
+                    <div class="condition-btn-timer" aria-hidden="true">00:00</div>
+                `;
                 elements.conditionsGrid.appendChild(btn);
             });
             updateConditionsLayout();
@@ -1636,7 +1699,12 @@
         buttons.forEach(btn => {
             const matchesLabel = btn.dataset.conditionLabel === state.currentCondition;
             const matchesId = btn.dataset.conditionId === state.currentConditionId;
-            btn.classList.toggle('selected', matchesLabel || matchesId);
+            const isSelected = matchesLabel || matchesId;
+            btn.classList.toggle('selected', isSelected);
+            const timerEl = btn.querySelector('.condition-btn-timer');
+            if (timerEl) {
+                timerEl.style.display = isSelected ? 'block' : 'none';
+            }
         });
     }
     
@@ -1645,12 +1713,23 @@
         elements.conditionsModal.classList.add('open');
         // Prevent scrolling on body when modal is open
         document.body.style.overflow = 'hidden';
+        updateTimer();
+        updateConditionButtonTimers();
+        // Start updating condition button timers while modal is open
+        if (state.currentStatus === 'running' && !state.conditionTimerInterval) {
+            state.conditionTimerInterval = setInterval(updateConditionButtonTimers, 1000);
+        }
     }
     
     // Close conditions modal
     function closeConditionsModal() {
         elements.conditionsModal.classList.remove('open');
         document.body.style.overflow = '';
+        // Stop updating condition button timers
+        if (state.conditionTimerInterval) {
+            clearInterval(state.conditionTimerInterval);
+            state.conditionTimerInterval = null;
+        }
     }
     
     // Show error dialog
@@ -1686,6 +1765,8 @@
             // Update local state immediately
             state.currentCondition = conditionLabel;
             state.currentConditionId = conditionId;
+            // Start condition timing only while acquisition is active
+            state.currentConditionTimestamp = state.currentStatus === 'running' ? Date.now() : null;
             updateUI();
             updateConditionButtonSelection();
             
@@ -1703,6 +1784,8 @@
             
             if (data.status === 'success') {
                 // Show feedback but don't close modal
+                // ensure timer display updates immediately
+                updateConditionButtonTimers();
                 showFeedback(`✓ Condition: ${conditionLabel}`, 'success');
             } else {
                 showFeedback(`⚠ ${data.message}`, 'warning');
@@ -1711,6 +1794,28 @@
             console.error('Select condition error:', error);
             showFeedback('✗ Cannot save condition. Check connection.', 'error');
         }
+    }
+
+    function updateConditionButtonTimers() {
+        if (!elements.conditionsGrid) return;
+        const selected = elements.conditionsGrid.querySelector('.condition-btn.selected');
+        if (!selected) return;
+        const timerEl = selected.querySelector('.condition-btn-timer');
+        if (!timerEl) return;
+        if (state.currentStatus !== 'running') {
+            timerEl.textContent = '00:00';
+            return;
+        }
+        if (!state.currentConditionTimestamp) {
+            timerEl.textContent = '00:00';
+            return;
+        }
+        const elapsed = Math.floor((Date.now() - state.currentConditionTimestamp) / 1000);
+        if (elapsed < 0) {
+            timerEl.textContent = '00:00';
+            return;
+        }
+        timerEl.textContent = formatTime(elapsed);
     }
     
     // Toggle eye-tracker connection
@@ -1809,6 +1914,7 @@
     configureCalibrationPanel();
     configureStatusPanel();
     loadLastCondition();
+    syncRunningAcquisitionTimer();
     updateUI();
     console.log('🔄 Requesting health status on page load...');
     requestHealthStatus('on page load');
@@ -1818,5 +1924,6 @@
     // Load and update status state periodically
     loadAndUpdateStatusState();
     setInterval(loadAndUpdateStatusState, 3000);
+    setInterval(syncRunningAcquisitionTimer, 3000);
     
 })();

@@ -132,33 +132,28 @@ config:
   look: neo
 ---
 flowchart BT
- subgraph master["Master Crutch (i.e. Right)"]
+ subgraph master["Master"]
         web_server["Web Server"]
         coordinator["Coordinator"]
         status_handler["Status Handler"]
         hdf5_writer["HDF5 Writer"]
         eye_tracker["Eye Tracker"]
-        m_handle_loadcell["Handle Loadcell"]
-        m_tip_loadcell["Tip Loadcell"]
-        m_ups["UPS"]
-        m_ppg["PPG"]
         hdf5[("HDF5 file")]
+        m_ups["UPS"]
   end
- subgraph slave["Slave Crutch (i.e. Left)"]
+ subgraph slave["Crutch"]
         s_ups["UPS"]
         s_tip_loadcell["Tip Loadcell"]
         s_handle_loadcell["Handle Loadcell"]
         s_ppg["PPG"]
+        s_sync_handler["Sync Handler"]
   end
     web_server -- ws_command --> coordinator
-    coordinator -- command --> status_handler & hdf5_writer & m_tip_loadcell & m_handle_loadcell & m_ppg & eye_tracker
+    coordinator -- command --> status_handler & hdf5_writer & eye_tracker
     status_handler -- status --> web_server
     m_ups -- ups --> status_handler
     hdf5_writer -- data --> hdf5
     hdf5_writer -- hdf5_writer --> status_handler
-    m_tip_loadcell -- tip_loadcell --> status_handler & hdf5_writer
-    m_handle_loadcell -- handle_loadcell --> status_handler & hdf5_writer
-    m_ppg -- ppg --> status_handler & hdf5_writer
     eye_tracker -- pupil_neon --> status_handler & hdf5_writer
     coordinator -. command .-> s_tip_loadcell & s_handle_loadcell & s_ppg
     s_tip_loadcell -. tip_loadcell .-> status_handler & hdf5_writer
