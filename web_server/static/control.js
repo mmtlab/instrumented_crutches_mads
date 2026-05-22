@@ -43,6 +43,7 @@
     const elements = {
         status: document.getElementById('status'),
         acquisitionId: document.getElementById('acquisition-id'),
+        acquisitionIdTitle: document.getElementById('acquisition-id-title'),
         timer: document.getElementById('timer'),
         currentCondition: document.getElementById('current-condition'),
         conditionTimer: document.getElementById('condition-timer'),
@@ -141,6 +142,7 @@
     state.currentCondition = null; // No default condition on startup
     state.currentConditionId = null;
     state.conditionStartTime = null;
+    state.nextAcquisitionId = null;
     state.eyetrackerConnected = false; // Eye-tracker connection state
 
     
@@ -1005,6 +1007,10 @@
             state.currentAcquisitionId = timing.current_acquisition_id || null;
         }
 
+        if (timing.next_acquisition_id !== undefined) {
+            state.nextAcquisitionId = timing.next_acquisition_id || null;
+        }
+
         if (!state.freezeTimer && timing.acquisition_started_at) {
             const parsed = new Date(timing.acquisition_started_at);
             if (!Number.isNaN(parsed.getTime())) {
@@ -1046,9 +1052,18 @@
     
     // Update UI based on current state
     function updateUI() {
+        const isRunning = state.currentStatus === 'running';
+
         // Update acquisition ID - show user-friendly format
-        if (state.currentAcquisitionId) {
+        if (elements.acquisitionIdTitle) {
+            elements.acquisitionIdTitle.textContent = isRunning ? 'CURRENT RECORDING ID' : 'NEXT RECORDING ID';
+        }
+
+        if (state.currentAcquisitionId && isRunning) {
             const num = state.currentAcquisitionId.replace('acq_', '');
+            elements.acquisitionId.textContent = `#${num}`;
+        } else if (state.nextAcquisitionId) {
+            const num = state.nextAcquisitionId.replace('acq_', '');
             elements.acquisitionId.textContent = `#${num}`;
         } else {
             elements.acquisitionId.textContent = 'None';
@@ -1063,7 +1078,6 @@
         }
         
         // Update button states
-        const isRunning = state.currentStatus === 'running';
         elements.startBtn.disabled = isRunning;
         elements.stopBtn.disabled = !isRunning;
 

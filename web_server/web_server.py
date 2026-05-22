@@ -302,6 +302,9 @@ def get_current_acquisition_timing():
     if acquisition_started_at is None and current_acquisition_id and current_acquisition_id in acquisitions:
         acquisition_started_at = _coerce_datetime(acquisitions[current_acquisition_id].get("start_time"))
 
+    next_acquisition_num = compute_next_id(acquisitions)
+    next_acquisition_id = f"acq_{next_acquisition_num}"
+
     condition_started_at = current_condition_started_at
     condition_id = current_condition_id
     condition_label = current_condition_label
@@ -320,6 +323,7 @@ def get_current_acquisition_timing():
 
     return {
         "current_acquisition_id": current_acquisition_id,
+        "next_acquisition_id": next_acquisition_id,
         "acquisition_started_at": acquisition_started_at.isoformat() if acquisition_started_at else None,
         "acquisition_elapsed_seconds": acquisition_elapsed_seconds,
         "acquisition_elapsed_text": _format_duration(acquisition_elapsed_seconds),
