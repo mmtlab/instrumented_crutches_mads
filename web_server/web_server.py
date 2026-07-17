@@ -83,7 +83,7 @@ def init_mads_agent():
     """Initialize MADS agent connection"""
     global mads_agent
     try:
-        mads_agent = Agent("web_server", "tcp://10.42.0.1:9092")
+        mads_agent = Agent("web_server", "tcp://localhost:9092")
         mads_agent.set_id("web_server")
         mads_agent.set_settings_timeout(2000)
         if mads_agent.init() != 0:
@@ -676,7 +676,14 @@ async def start_acquisition(test_config: dict = None):
             _clear_active_condition()
     else:
         _clear_active_condition()
+
+    # save info in a csv file for external use
+    csv_path = DATA_DIR / f"sub_{test_config.get('subject_id', 'unknown')}_session_{test_config.get('session_id', 'unknown')}_{acquisition_id}.csv"
+    with open(csv_path, "w") as f:
+        f.write("start_time,subject_height_cm,subject_weight_kg,crutch_height_hole\n")
+        f.write(f"{acquisition_started_at.isoformat()},{test_config.get('height_cm','')},{test_config.get('weight_kg','')},{test_config.get('crutch_height','')}\n")
     
+
     return {
         "status": "started",
         "acquisition_id": acquisition_id,

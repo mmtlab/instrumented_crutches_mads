@@ -79,12 +79,18 @@ public:
           return return_type::error;
         }
         int id = input.value("id", -1); // get the id value, default to -1 if not found
-
+        
+        // check if the command contains "subject_id" and "session_id" fields
+        int subject_id = input.value("subject_id", 0); // default to 0 if not found
+        int session_id = input.value("session_id", 0); // default to 0 if not found
+       
+        cout << "Starting recording with id: " << id << ", subject_id: " << subject_id << ", session_id: " << session_id << std::endl;
         // Close any previously opened file, to ensure we start with a clean state, and to avoid potential issues with multiple open files or file locks, which can lead to data loss or corruption
         _converter.close();
 
         // Open a new file for recording
-        string new_filename = "_acq_" + to_string(id) + ".h5";
+        string new_filename = "_sub_" + to_string(subject_id) + "_session_" + to_string(session_id) + "_acq_" + to_string(id) + ".h5";
+        cout << "Filename: " << new_filename << std::endl;
 
         if (new_filename == _filename) {
           _filename = "not_handled_filename.h5"; // reset filename to avoid overwriting in case of new recording without restart
