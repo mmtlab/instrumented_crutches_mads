@@ -5,8 +5,8 @@ clc
 % Configuration
 idx = 22;
 
-file_h5 = fullfile("..","..","web_server/data",compose("acq_%d.h5",idx));
-[tip_left, tip_right] = tip(file_h5);
+[file, location] = uigetfile('*.h5');
+[tip_left, tip_right] = tip(fullfile(location,file));
 
 %%
 t0 = double(tip_right.timestamp_unix_ns(1));
