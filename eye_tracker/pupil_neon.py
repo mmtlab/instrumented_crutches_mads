@@ -26,7 +26,6 @@ class AgentStatus(Enum):
     SHUTDOWN = 1
     IDLE = 2
     CONNECTED = 3
-    RECORDING = 4
 
 class PupilNeonAgent:
     def __init__(self, broker_url="tcp://localhost:9092"):
@@ -139,59 +138,17 @@ class PupilNeonAgent:
             scene_camera = self.device.world_sensor()
             connected = False if scene_camera is None else scene_camera.connected
             
-            if (self.agent_status == AgentStatus.CONNECTED or self.agent_status == AgentStatus.RECORDING) and not connected:
+            if (self.agent_status == AgentStatus.CONNECTED) and not connected:
                 self.agent_status = AgentStatus.IDLE
                 self.publish_agent_status("Connection lost: scene camera not connected")
                 return False
             
             return True
         except Exception as e:
-            if self.agent_status == AgentStatus.CONNECTED or self.agent_status == AgentStatus.RECORDING:
+            if self.agent_status == AgentStatus.CONNECTED:
                 self.agent_status = AgentStatus.IDLE
                 self.publish_agent_status(f"Connection lost: {str(e)}")
             return False
-
-    def start_recording(self): 
-        self.device.recording_start()
-
-        # update status after starting recording, if recording fails the health loop will catch it and update the status accordingly
-        self.agent_status = AgentStatus.RECORDING
-        self.publish_agent_status(None)
-
-    def stop_recording(self): 
-
-        if self.last_condition_event is not None:
-            self.device.send_event(self.last_condition_event + ".end")
-            print(f"Sent condition event with label: {self.last_condition_event}.end")
-            self.last_condition_event = None
-
-        time.sleep(0.1) # add a short delay to ensure the .end event is processed before stopping the recording
-        self.device.recording_stop_and_save()
-
-        # update status after stopping recording, if recording fails the health loop will catch it and update the status accordingly
-        self.agent_status = AgentStatus.CONNECTED
-        self.publish_agent_status(None)
-
-    def send_condition_event(self, label):
-
-        # if it is the first condition event we send it with the .begin suffix
-        if self.last_condition_event is None:
-            self.device.send_event(label + ".begin")
-            print(f"Sent condition event with label: {label}.begin")
-            self.last_condition_event = label
-
-        elif self.last_condition_event != label:
-            self.device.send_event(self.last_condition_event + ".end")
-            print(f"Sent condition event with label: {self.last_condition_event}.end")
-            time.sleep(0.05) # add a short delay to ensure the .end event is processed before the next .begin event
-            self.device.send_event(label + ".begin")
-            print(f"Sent condition event with label: {label}.begin")
-            self.last_condition_event = label
-        
-        else:
-            return
-
-        
 
     def _publish_offset_stats(self, mean_to, std_to, med_to, mean_rt, std_rt, med_rt):
         """Publish time offset and roundtrip stats. Also update the agent status"""
@@ -280,7 +237,7 @@ class PupilNeonAgent:
                     pass
                 
                 self.device = None
-                if self.agent_status == AgentStatus.CONNECTED or self.agent_status == AgentStatus.RECORDING:
+                if self.agent_status == AgentStatus.CONNECTED:
                     self.agent_status = AgentStatus.IDLE
                     self.publish_agent_status(f"disconnected due to {str(e)}")
             
@@ -304,55 +261,6 @@ class PupilNeonAgent:
         if self._health_thread:
             self._health_thread.join(timeout=1.0)
 
-    def fill_template(self, subject_id=0, session_id=0, acquisition_id=0):
-        """Fill template with subject/session info and send to device."""
-        if self.device is None or self.template is None:
-            print("Cannot fill template: device or template not available")
-            return
-        template_data = self.device.get_template_data()  # Refresh template before filling
-        print(f"Current template data before filling: {template_data}")
-
-        print(f"Filling template with subject_id={subject_id}, session_id={session_id}, acquisition_id={acquisition_id}")
-        questionnaire = {}
-        if self.template:
-            try:
-                for item in self.template.items:
-                    print(f"Processing template item: {item}")
-                    question = self.template.get_question_by_id(item.id)
-                    if item.title == "Subject ID":
-                        template_input = str(subject_id)
-                    elif item.title == "Session ID":
-                        template_input = str(session_id)
-                    elif item.title == "Acquisition ID":
-                        template_input = str(acquisition_id)
-
-                    print(f"Validating input for '{item.title}': {template_input}")
-                    try:
-                        errors = question.validate_answer(template_input)
-                        if not errors:
-                            questionnaire[str(item.id)] = template_input
-                            print(f"Added '{item.title}' to questionnaire with value: {template_input}")
-                        else:
-                            print(f"Errors: {errors}")
-                    except InvalidTemplateAnswersError as e:
-                        print(f"Validation failed for: {template_input}")
-                        for error in e.errors:
-                            print(f"    {error['msg']}")
-            except Exception as e:
-                print(f"Error filling template: {e}")
-                return
-            
-        print(f"Filled questionnaire: {questionnaire}")
-        try:
-            # Sending the template
-            if questionnaire:
-                self.device.post_template_data(questionnaire)
-        except Exception as e:
-            print(f"Error sending filled template: {e}")
-            return
-            
-        print(f"Sent filled template for subject_id={subject_id}, session_id={session_id}, acquisition_id={acquisition_id}")
-       
 
     def run(self):
         """Main run loop - wait for connect/disconnect commands."""
@@ -396,35 +304,7 @@ class PupilNeonAgent:
                         if cmd == 'pupil_neon_disconnect':
                             print("Received disconnect command")
                             self.stop_health_loop()
-                            self.disconnect_device()
-
-                        elif cmd == 'start':
-                            subject_id = message.get('subject_id', -1)
-                            session_id = message.get('session_id', -1)
-                            acquisition_id = message.get('id', -1)
-                            print(f"Received start command with subject_id: {subject_id}, session_id: {session_id}, acquisition_id: {acquisition_id}")
-                            self.fill_template(subject_id, session_id, acquisition_id)
-                            self.start_recording()
-                            
-
-                    case AgentStatus.RECORDING:
-                        # ignore all commands except stop, condition and disconnect
-                        # Assure to stop and save the recording on disconnect or stop command, otherwise we might lose data
-                        if cmd == 'condition':
-                            label = message.get('label', 'NA')
-                            self.send_condition_event(label)
-                            # this does not change the agent status, we are still recording after sending the event
-
-                        elif cmd == 'stop':
-                            print("Received stop command")
-                            self.stop_recording()
-
-                        elif cmd == 'pupil_neon_disconnect':
-                            print("Received disconnect command")
-                            self.stop_recording()
-                            self.stop_health_loop()
-                            self.disconnect_device()
-
+                            self.disconnect_device() 
 
         except KeyboardInterrupt:
             pass
@@ -433,7 +313,7 @@ class PupilNeonAgent:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="UPS HAT MADS agent")
+    parser = argparse.ArgumentParser(description="Pupil Neon MADS agent")
     parser.add_argument("-s", "--server", default="tcp://localhost:9092",
                         help="Broker URL (default: tcp://localhost:9092)")
     args = parser.parse_args()
@@ -452,9 +332,7 @@ def main():
         if agent:
             try:
                 agent.stop_health_loop()
-                if agent.agent_status == AgentStatus.CONNECTED or agent.agent_status == AgentStatus.RECORDING:
-                    if agent.agent_status == AgentStatus.RECORDING:
-                        agent.device.recording_stop_and_save()
+                if agent.agent_status == AgentStatus.CONNECTED:
                     agent.disconnect_device()
 
                 # Publish shutdown status BEFORE disconnecting from broker

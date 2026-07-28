@@ -17,7 +17,10 @@
         currentHdf5WriterStatus: 'unknown',
         currentHdf5WriterStatusValue: '',
         timerInterval: null,
+        timingRefreshInterval: null,
         startTime: null,
+        conditionStartTime: null,
+        freezeTimer: false,
         currentConditionId: null,
         currentConditionTimestamp: null,
         conditionTimerInterval: null,
@@ -42,9 +45,11 @@
     const elements = {
         status: document.getElementById('status'),
         acquisitionId: document.getElementById('acquisition-id'),
+        acquisitionIdTitle: document.getElementById('acquisition-id-title'),
         timer: document.getElementById('timer'),
         conditionTimer: document.getElementById('condition-timer'),
         currentCondition: document.getElementById('current-condition'),
+        conditionTimer: document.getElementById('condition-timer'),
         startBtn: document.getElementById('start-btn'),
         stopBtn: document.getElementById('stop-btn'),
         feedback: document.getElementById('feedback'),
@@ -139,6 +144,8 @@
     // Application state - add current condition
     state.currentCondition = null; // No default condition on startup
     state.currentConditionId = null;
+    state.conditionStartTime = null;
+    state.nextAcquisitionId = null;
     state.eyetrackerConnected = false; // Eye-tracker connection state
 
     
@@ -921,11 +928,21 @@
         updateOffsetTimestamp(timestamp);
     }
     
-    // Format time as MM:SS
-    function formatTime(seconds) {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    function formatDuration(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) {
+            return '--:--';
+        }
+
+        const totalSeconds = Math.floor(seconds);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+
+        if (hours > 0) {
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
 
     function setTimerDisplays(value) {
@@ -941,6 +958,17 @@
             const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
             setTimerDisplays(formatTime(elapsed));
         }
+
+        if (elements.conditionTimer) {
+            if (state.conditionStartTime) {
+                const elapsed = Math.floor((Date.now() - state.conditionStartTime) / 1000);
+                elements.conditionTimer.textContent = formatDuration(elapsed);
+            } else {
+                elements.conditionTimer.textContent = '--:--';
+            }
+        }
+
+        updateConditionModalTimers();
     }
     
     // Start timer
@@ -948,7 +976,7 @@
         state.startTime = Date.now();
         setTimerDisplays('00:00');
         if (state.timerInterval) clearInterval(state.timerInterval);
-        state.timerInterval = setInterval(updateTimer, 1000);
+        state.timerInterval = setInterval(updateTimingDisplay, 1000);
     }
     
     // Stop timer
@@ -957,7 +985,7 @@
             clearInterval(state.timerInterval);
             state.timerInterval = null;
         }
-        updateTimer(); // Final update
+        updateTimingDisplay(); // Final update
     }
     
     // Reset timer
@@ -969,9 +997,18 @@
     
     // Update UI based on current state
     function updateUI() {
+        const isRunning = state.currentStatus === 'running';
+
         // Update acquisition ID - show user-friendly format
-        if (state.currentAcquisitionId) {
+        if (elements.acquisitionIdTitle) {
+            elements.acquisitionIdTitle.textContent = isRunning ? 'CURRENT RECORDING ID' : 'NEXT RECORDING ID';
+        }
+
+        if (state.currentAcquisitionId && isRunning) {
             const num = state.currentAcquisitionId.replace('acq_', '');
+            elements.acquisitionId.textContent = `#${num}`;
+        } else if (state.nextAcquisitionId) {
+            const num = state.nextAcquisitionId.replace('acq_', '');
             elements.acquisitionId.textContent = `#${num}`;
         } else {
             elements.acquisitionId.textContent = 'None';
@@ -979,11 +1016,40 @@
         
         // Update current condition display
         elements.currentCondition.textContent = state.currentCondition || '-';
+        if (elements.conditionTimer) {
+            elements.conditionTimer.textContent = state.conditionStartTime
+                ? formatDuration(Math.floor((Date.now() - state.conditionStartTime) / 1000))
+                : '--:--';
+        }
         
         // Update button states
-        const isRunning = state.currentStatus === 'running';
         elements.startBtn.disabled = isRunning;
         elements.stopBtn.disabled = !isRunning;
+
+        updateConditionButtonSelection();
+    }
+
+    function getSelectedConditionElapsedText() {
+        if (!state.conditionStartTime) {
+            return '--:--';
+        }
+
+        return formatDuration(Math.floor((Date.now() - state.conditionStartTime) / 1000));
+    }
+
+    function updateConditionModalTimers() {
+        if (!elements.conditionsGrid) return;
+
+        const elapsedText = getSelectedConditionElapsedText();
+        const buttons = elements.conditionsGrid.querySelectorAll('.condition-btn');
+        buttons.forEach((btn) => {
+            const timerLabel = btn.querySelector('.condition-btn-timer');
+            const isSelected = btn.classList.contains('selected');
+            if (timerLabel) {
+                timerLabel.textContent = elapsedText;
+                timerLabel.style.display = isSelected ? 'block' : 'none';
+            }
+        });
     }
 
     async function syncRunningAcquisitionTimer() {
@@ -1079,6 +1145,13 @@
                 if (comment) {
                     elements.commentText.value = '';
                 }
+                
+                // Refresh timing from backend immediately to ensure UI sync
+                try {
+                    await refreshAcquisitionTiming();
+                } catch (e) {
+                    console.warn('Immediate timing refresh after start failed:', e);
+                }
             } else {
                 showFeedback(`⚠ ${data.message}`, 'warning');
             }
@@ -1113,13 +1186,15 @@
                 state.currentConditionId = null;
                 state.currentConditionTimestamp = null;
                 stopTimer();
+                updateTimingDisplay();
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
                 showFeedback(`✓ Recording stopped (#${num})`, 'success');
-                
-                // Reset to idle after 2 seconds
+
+                // Reset to idle after 2 seconds (keep timer frozen until next start)
                 setTimeout(() => {
                     state.currentStatus = 'idle';
+                    // Keep freezeTimer true so UI stays at 00:00 until a new start
                     resetTimer();
                     updateUI();
                 }, 2000);
@@ -1149,8 +1224,12 @@
             } else {
                 state.currentStatus = 'idle';
                 state.currentAcquisitionId = null;
+                state.conditionStartTime = null;
             }
             updateUI();
+            if (state.currentStatus === 'running') {
+                await refreshAcquisitionTiming();
+            }
         } catch (error) {
             console.error('Check status error:', error);
             showFeedback('Cannot connect. Check if device is powered on.', 'error');
@@ -1673,6 +1752,7 @@
             });
             updateConditionsLayout();
             updateConditionButtonSelection();
+            updateConditionModalTimers();
         } catch (error) {
             console.error('Load conditions error:', error);
         }
@@ -1706,6 +1786,7 @@
                 timerEl.style.display = isSelected ? 'block' : 'none';
             }
         });
+        updateConditionModalTimers();
     }
     
     // Open conditions modal
@@ -1787,6 +1868,12 @@
                 // ensure timer display updates immediately
                 updateConditionButtonTimers();
                 showFeedback(`✓ Condition: ${conditionLabel}`, 'success');
+                // Request fresh timing immediately so UI reflects the new condition
+                try {
+                    await refreshAcquisitionTiming();
+                } catch (e) {
+                    console.warn('Immediate timing refresh after condition save failed:', e);
+                }
             } else {
                 showFeedback(`⚠ ${data.message}`, 'warning');
             }
@@ -1919,7 +2006,7 @@
     console.log('🔄 Requesting health status on page load...');
     requestHealthStatus('on page load');
     checkNewStatusMessages();
-    setInterval(checkNewStatusMessages, 2000);
+    setInterval(checkNewStatusMessages, 3000);
     
     // Load and update status state periodically
     loadAndUpdateStatusState();

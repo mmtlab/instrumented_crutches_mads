@@ -88,6 +88,19 @@ h1 {
     background-color: #f0f4ff;
 }
 
+.nav-link.disabled {
+    color: var(--muted);
+    background-color: transparent;
+    opacity: 0.65;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.nav-link.disabled:hover {
+    color: var(--muted);
+    background-color: transparent;
+}
+
 .nav-link.active {
     color: var(--primary);
     background-color: #eff6ff;
@@ -228,6 +241,13 @@ h2 {
     font-size: 14px;
 }
 
+.status-inline {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .status strong {
     color: var(--muted);
     font-size: 12px;
@@ -239,6 +259,12 @@ h2 {
 #status {
     font-weight: 600;
     font-size: 16px;
+}
+
+.status-inline-timer {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
 }
 
 .status-unknown {
@@ -1292,7 +1318,7 @@ canvas {
 
 .condition-btn {
     padding: 30px 20px;
-    font-size: 20px;
+    font-size: 30px;
     font-weight: 600;
     border: 2px solid transparent;
     border-radius: 12px;
@@ -1300,12 +1326,37 @@ canvas {
     color: white;
     transition: all 0.2s ease;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.condition-btn-label {
+    display: block;
+    width: 100%;
+}
+
+.condition-btn-timer {
+    display: none;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    opacity: 0.95;
+    width: 100%;
 }
 
 .condition-btn.selected {
     border-color: #ffffff;
     border-width: 4px;
     box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 10px 22px rgba(0, 0, 0, 0.3);
+}
+
+.condition-btn.selected .condition-btn-timer {
+    display: block;
 }
 
 .condition-btn:hover {
@@ -1395,6 +1446,10 @@ canvas {
     .status div {
         font-size: 13px;
     }
+
+    .status-inline {
+        gap: 6px;
+    }
     
     .status strong {
         font-size: 11px;
@@ -1454,7 +1509,14 @@ canvas {
     
     .condition-btn {
         padding: 16px 12px;
-        font-size: 14px;
+        font-size: 21px;
+        justify-content: center;
+        line-height: 1.15;
+        gap: 6px;
+    }
+
+    .condition-btn-timer {
+        font-size: 13px;
     }
     
     .logo-panel {

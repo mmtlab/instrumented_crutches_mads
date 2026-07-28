@@ -40,6 +40,12 @@ status_task_stop = None
 # Status state tracking - keeps last status for each source
 status_state = {}  # Maps source_key (e.g., "coordinator", "tip_loadcell_left") to latest status info
 
+# Acquisition timing state - kept in memory for the active recording only
+current_acquisition_started_at = None
+current_condition_started_at = None
+current_condition_id = None
+current_condition_label = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and shutdown resources using lifespan events."""
@@ -241,6 +247,95 @@ def parse_battery_info(payload: dict) -> dict:
     return result
 
 
+def _coerce_datetime(value):
+    """Convert a timestamp-like value to a datetime, if possible."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return date_parser.parse(str(value))
+    except Exception:
+        return None
+
+
+def _format_duration(seconds):
+    """Format a duration as MM:SS or HH:MM:SS for longer recordings."""
+    if seconds is None:
+        return "--:--"
+
+    total_seconds = max(0, int(seconds))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _elapsed_seconds_since(started_at):
+    """Return elapsed seconds from a datetime-like timestamp."""
+    start_dt = _coerce_datetime(started_at)
+    if not start_dt:
+        return None
+    return max(0, int((datetime.now() - start_dt).total_seconds()))
+
+
+def _set_active_condition(condition_id: str = None, condition_label: str = None, started_at=None):
+    """Store the currently active condition in memory."""
+    global current_condition_started_at, current_condition_id, current_condition_label
+    current_condition_id = (condition_id or "").strip() or None
+    current_condition_label = (condition_label or "").strip() or current_condition_id
+    current_condition_started_at = started_at or datetime.now()
+
+
+def _clear_active_condition():
+    """Clear the in-memory active condition state."""
+    global current_condition_started_at, current_condition_id, current_condition_label
+    current_condition_started_at = None
+    current_condition_id = None
+    current_condition_label = None
+
+
+def get_current_acquisition_timing():
+    """Return the current acquisition and active-condition durations."""
+    acquisition_started_at = current_acquisition_started_at
+    if acquisition_started_at is None and current_acquisition_id and current_acquisition_id in acquisitions:
+        acquisition_started_at = _coerce_datetime(acquisitions[current_acquisition_id].get("start_time"))
+
+    next_acquisition_num = compute_next_id(acquisitions)
+    next_acquisition_id = f"acq_{next_acquisition_num}"
+
+    condition_started_at = current_condition_started_at
+    condition_id = current_condition_id
+    condition_label = current_condition_label
+
+    if condition_started_at is None and current_acquisition_id and current_acquisition_id in acquisitions:
+        existing_conditions = acquisitions[current_acquisition_id].get("conditions", [])
+        if existing_conditions:
+            last_entry = existing_conditions[-1]
+            if isinstance(last_entry, dict):
+                condition_started_at = _coerce_datetime(last_entry.get("timestamp"))
+                condition_id = (last_entry.get("condition_id") or last_entry.get("condition") or "").strip() or None
+                condition_label = (last_entry.get("condition") or condition_id or "").strip() or None
+
+    acquisition_elapsed_seconds = _elapsed_seconds_since(acquisition_started_at)
+    condition_elapsed_seconds = _elapsed_seconds_since(condition_started_at)
+
+    return {
+        "current_acquisition_id": current_acquisition_id,
+        "next_acquisition_id": next_acquisition_id,
+        "acquisition_started_at": acquisition_started_at.isoformat() if acquisition_started_at else None,
+        "acquisition_elapsed_seconds": acquisition_elapsed_seconds,
+        "acquisition_elapsed_text": _format_duration(acquisition_elapsed_seconds),
+        "current_condition_id": condition_id,
+        "current_condition_label": condition_label,
+        "current_condition_started_at": condition_started_at.isoformat() if condition_started_at else None,
+        "current_condition_elapsed_seconds": condition_elapsed_seconds,
+        "current_condition_elapsed_text": _format_duration(condition_elapsed_seconds),
+        "has_active_condition": condition_started_at is not None,
+    }
+
+
 def build_status_message_key(payload: dict) -> str:
     """Build a stable key for status messages (matches frontend)."""
     source = payload.get("source", "system")
@@ -283,7 +378,15 @@ def load_index():
 
 def save_index(acq_dict):
     ensure_data_dir()
-    INDEX_FILE.write_text(json.dumps({"acquisitions": list(acq_dict.values())}))
+    data = json.dumps({"acquisitions": list(acq_dict.values())}, ensure_ascii=False)
+    try:
+        # Write to a temp file then atomically replace the index to avoid corruption
+        tmp_path = INDEX_FILE.with_suffix('.tmp')
+        tmp_path.write_text(data, encoding='utf-8')
+        tmp_path.replace(INDEX_FILE)
+    except Exception as e:
+        print(f"Error saving index file {INDEX_FILE}: {e}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Failed to save index: {e}")
 
 
 def compute_next_id(acq_dict):
@@ -484,7 +587,7 @@ async def android_chrome_512():
 @app.post("/start")
 async def start_acquisition(test_config: dict = None):
     """Start a fake acquisition and return generated acquisition id."""
-    global current_acquisition_id, next_id, acquisitions, mads_agent
+    global current_acquisition_id, current_acquisition_started_at, next_id, acquisitions, mads_agent
     
     if current_acquisition_id is not None:
         return {
@@ -525,10 +628,12 @@ async def start_acquisition(test_config: dict = None):
             "message": f"mads start failed: {exc}"
         }
     
+    acquisition_started_at = datetime.now()
+
     # Create acquisition record with test configuration
     acq_record = {
         "id": acquisition_id,
-        "start_time": datetime.now().isoformat(),
+        "start_time": acquisition_started_at.isoformat(),
         "status": "running",
         "samples": 0
     }
@@ -540,7 +645,9 @@ async def start_acquisition(test_config: dict = None):
             "session_id": test_config.get("session_id"),
             "height_cm": test_config.get("height_cm"),
             "weight_kg": test_config.get("weight_kg"),
-            "crutch_height": test_config.get("crutch_height")
+            "crutch_height": test_config.get("crutch_height"),
+            "condition_id": test_config.get("condition_id"),
+            "condition_label": test_config.get("condition_label")
         }
         
         # Add initial comment if provided
@@ -553,28 +660,42 @@ async def start_acquisition(test_config: dict = None):
     save_index(acquisitions)
     
     current_acquisition_id = acquisition_id
+    current_acquisition_started_at = acquisition_started_at
     
     # Send current condition command if condition_id is provided and mads_agent is available
     condition_id = test_config.get("condition_id", "").strip() if test_config else ""
+    condition_label = (test_config.get("condition_label", "").strip() if test_config else "") or condition_id
     if condition_id and mads_agent:
         try:
             topic = "ws_command"
             mads_agent.publish({"command": "condition", "label": condition_id}, topic)
+            _set_active_condition(condition_id, condition_label, started_at=acquisition_started_at)
         except Exception as exc:
             # Log but don't fail the start if condition publish fails
             print(f"Warning: Failed to publish condition command: {exc}", file=sys.stderr)
+            _clear_active_condition()
+    else:
+        _clear_active_condition()
+
+    # save info in a csv file for external use
+    csv_path = DATA_DIR / f"sub_{test_config.get('subject_id', 'unknown')}_session_{test_config.get('session_id', 'unknown')}_{acquisition_id}.csv"
+    with open(csv_path, "w") as f:
+        f.write("start_time,subject_height_cm,subject_weight_kg,crutch_height_hole\n")
+        f.write(f"{acquisition_started_at.isoformat()},{test_config.get('height_cm','')},{test_config.get('weight_kg','')},{test_config.get('crutch_height','')}\n")
     
+
     return {
         "status": "started",
         "acquisition_id": acquisition_id,
-        "message": f"Acquisition {acquisition_id} started"
+        "message": f"Acquisition {acquisition_id} started",
+        "timing": get_current_acquisition_timing()
     }
 
 
 @app.post("/stop")
 async def stop_acquisition():
     """Stop the current acquisition."""
-    global current_acquisition_id, acquisitions
+    global current_acquisition_id, current_acquisition_started_at, acquisitions
     
     if current_acquisition_id is None:
         return {
@@ -594,17 +715,27 @@ async def stop_acquisition():
     if acquisition_id in acquisitions:
         acquisitions[acquisition_id]["status"] = "completed"
         acquisitions[acquisition_id]["stop_time"] = datetime.now().isoformat()
+        acquisitions[acquisition_id]["duration"] = _elapsed_seconds_since(current_acquisition_started_at)
         # Sample count will be determined from HDF5 file when read
         # External code saves the HDF5 file to data/acq_XXXX.h5
         save_index(acquisitions)
     
     current_acquisition_id = None
+    current_acquisition_started_at = None
+    _clear_active_condition()
 
     return {
         "status": "stopped",
         "acquisition_id": acquisition_id,
-        "message": f"Acquisition {acquisition_id} stopped"
+        "message": f"Acquisition {acquisition_id} stopped",
+        "timing": get_current_acquisition_timing()
     }
+
+
+@app.get("/acquisition/timing")
+async def acquisition_timing():
+    """Return the elapsed time for the active acquisition and condition."""
+    return get_current_acquisition_timing()
 
 
 @app.post("/set_offset")
@@ -785,16 +916,21 @@ async def save_condition(condition_data: dict):
             try:
                 topic = "ws_command"
                 mads_agent.publish({"command": "condition", "label": condition_id}, topic)
+                if target_acq_id == current_acquisition_id:
+                    _set_active_condition(condition_id, condition_label)
             except Exception as exc:
                 return {
                     "status": "error",
                     "message": str(exc)
                 }
+        elif target_acq_id == current_acquisition_id:
+            _set_active_condition(condition_id, condition_label)
 
     return {
         "status": "success",
         "message": "Condition saved" if is_new_condition else "Condition unchanged",
-        "acquisition_id": target_acq_id
+        "acquisition_id": target_acq_id,
+        "timing": get_current_acquisition_timing()
     }
 
 
@@ -1804,6 +1940,8 @@ async def get_status_state():
         "battery_right": None,
         "hdf5_writer": None,
         "eye_tracker": None,
+        "sync_handler_left": None,
+        "sync_handler_right": None,
         "raw": status_state  # Include raw state for debugging
     }
     
@@ -1842,7 +1980,12 @@ async def get_status_state():
             organized_state["hdf5_writer"] = status_view
         elif "eye_tracker" in source_lower or "pupil" in source_lower:
             organized_state["eye_tracker"] = status_view
-    
+        elif source_lower.startswith("sync_handler"):
+            if status_view.get("side") == "left":
+                organized_state["sync_handler_left"] = status_view
+            elif status_view.get("side") == "right":
+                organized_state["sync_handler_right"] = status_view
+
     return organized_state
 
 

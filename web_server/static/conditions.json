@@ -16,6 +16,46 @@
       "color": "#8b5cf6"
     },
     {
+      "id": "left_90",
+      "label": "Left 90°",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "right_90",
+      "label": "Right 90°",
+      "color": "#f97316"
+    },
+    {
+      "id": "left_180",
+      "label": "Left 180°",
+      "color": "#f43f5e"
+    },
+    {
+      "id": "right_180",
+      "label": "Right 180°",
+      "color": "#e11d48"
+    },
+    {
+      "id": "ramp_up",
+      "label": "Ramp Up",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "ramp_down",
+      "label": "Ramp Down",
+      "color": "#0d9488"
+    },
+    {
+      "id": "stairs_up",
+      "label": "Stairs Up",
+      "color": "#facc15"
+    },
+    {
+      "id": "stairs_down",
+      "label": "Stairs Down",
+      "color": "#eab308"
+    },
+    {
       "id": "stand_up",
       "label": "Stand up",
       "color": "#22c55e"
@@ -24,21 +64,6 @@
       "id": "sit_down",
       "label": "Sit down",
       "color": "#10b981"
-    },
-    {
-      "id": "stair",
-      "label": "Stair",
-      "color": "#ef4444"
-    },
-    {
-      "id": "ramp",
-      "label": "Ramp",
-      "color": "#06b6d4"
-    },
-    {
-      "id": "last_condition_not_valid",
-      "label": "Last Condition Not Valid",
-      "color": "#000000"
     }
   ]
 }
