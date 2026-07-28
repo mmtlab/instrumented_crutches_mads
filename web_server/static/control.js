@@ -22,6 +22,8 @@
         conditionStartTime: null,
         freezeTimer: false,
         currentConditionId: null,
+        currentConditionTimestamp: null,
+        conditionTimerInterval: null,
         datetimeHealthStatusTimeoutId: null
     };
 
@@ -45,6 +47,7 @@
         acquisitionId: document.getElementById('acquisition-id'),
         acquisitionIdTitle: document.getElementById('acquisition-id-title'),
         timer: document.getElementById('timer'),
+        conditionTimer: document.getElementById('condition-timer'),
         currentCondition: document.getElementById('current-condition'),
         conditionTimer: document.getElementById('condition-timer'),
         startBtn: document.getElementById('start-btn'),
@@ -941,21 +944,19 @@
 
         return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
-    
-    function updateTimingDisplay() {
-        if (state.freezeTimer) {
-            if (elements.timer) elements.timer.textContent = '00:00';
-            if (elements.conditionTimer) elements.conditionTimer.textContent = '--:--';
-            updateConditionModalTimers();
-            return;
+
+    function setTimerDisplays(value) {
+        elements.timer.textContent = value;
+        if (elements.conditionTimer) {
+            elements.conditionTimer.textContent = value;
         }
-        if (elements.timer) {
-            if (state.startTime) {
-                const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
-                elements.timer.textContent = formatDuration(elapsed);
-            } else {
-                elements.timer.textContent = '00:00';
-            }
+    }
+    
+    // Update timer display
+    function updateTimer() {
+        if (state.startTime) {
+            const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+            setTimerDisplays(formatTime(elapsed));
         }
 
         if (elements.conditionTimer) {
@@ -972,13 +973,8 @@
     
     // Start timer
     function startTimer() {
-        if (!state.startTime) {
-            state.startTime = Date.now();
-        }
-        if (state.currentConditionId && !state.conditionStartTime) {
-            state.conditionStartTime = state.startTime;
-        }
-        updateTimingDisplay();
+        state.startTime = Date.now();
+        setTimerDisplays('00:00');
         if (state.timerInterval) clearInterval(state.timerInterval);
         state.timerInterval = setInterval(updateTimingDisplay, 1000);
     }
@@ -996,58 +992,7 @@
     function resetTimer() {
         stopTimer();
         state.startTime = null;
-        state.conditionStartTime = null;
-        updateTimingDisplay();
-    }
-
-    function applyTimingPayload(timing) {
-        if (!timing || typeof timing !== 'object') return;
-
-        if (timing.current_acquisition_id !== undefined) {
-            state.currentAcquisitionId = timing.current_acquisition_id || null;
-        }
-
-        if (timing.next_acquisition_id !== undefined) {
-            state.nextAcquisitionId = timing.next_acquisition_id || null;
-        }
-
-        if (!state.freezeTimer && timing.acquisition_started_at) {
-            const parsed = new Date(timing.acquisition_started_at);
-            if (!Number.isNaN(parsed.getTime())) {
-                state.startTime = parsed.getTime();
-            }
-        }
-
-        if (timing.current_condition_id !== undefined) {
-            state.currentConditionId = timing.current_condition_id || null;
-        }
-
-        if (timing.current_condition_label !== undefined) {
-            state.currentCondition = timing.current_condition_label || null;
-        }
-
-        if (!state.freezeTimer && timing.current_condition_started_at) {
-            const parsed = new Date(timing.current_condition_started_at);
-            if (!Number.isNaN(parsed.getTime())) {
-                state.conditionStartTime = parsed.getTime();
-            }
-        } else if (!state.freezeTimer && timing.current_acquisition_id && state.currentAcquisitionId === timing.current_acquisition_id) {
-            state.conditionStartTime = null;
-        }
-
-        updateTimingDisplay();
-        updateUI();
-    }
-
-    async function refreshAcquisitionTiming() {
-        try {
-            const response = await fetch(`${API_BASE}/acquisition/timing`);
-            if (!response.ok) return;
-            const data = await response.json();
-            applyTimingPayload(data);
-        } catch (error) {
-            console.error('Refresh acquisition timing error:', error);
-        }
+        setTimerDisplays('00:00');
     }
     
     // Update UI based on current state
@@ -1106,6 +1051,44 @@
             }
         });
     }
+
+    async function syncRunningAcquisitionTimer() {
+        try {
+            const response = await fetch(`${API_BASE}/acquisitions`);
+            if (!response.ok) {
+                return;
+            }
+
+            const data = await response.json();
+            const currentAcquisitionId = data.current_acquisition;
+            if (!currentAcquisitionId) {
+                return;
+            }
+
+            const runningAcquisition = (data.acquisitions || []).find((acq) => acq.id === currentAcquisitionId);
+            if (!runningAcquisition || !runningAcquisition.start_time) {
+                return;
+            }
+
+            const startTime = Date.parse(runningAcquisition.start_time);
+            if (Number.isNaN(startTime)) {
+                return;
+            }
+
+            state.currentAcquisitionId = currentAcquisitionId;
+            state.currentStatus = 'running';
+            state.startTime = startTime;
+
+            if (!state.timerInterval) {
+                state.timerInterval = setInterval(updateTimer, 1000);
+            }
+
+            updateTimer();
+            updateUI();
+        } catch (error) {
+            console.error('Sync running acquisition timer error:', error);
+        }
+    }
     
     // Start acquisition
     async function startAcquisition() {
@@ -1150,9 +1133,9 @@
             if (data.status === 'started') {
                 state.currentAcquisitionId = data.acquisition_id;
                 state.currentStatus = 'running';
-                // Allow timing updates again when a new acquisition starts
-                state.freezeTimer = false;
-                applyTimingPayload(data.timing);
+                if (state.currentConditionId) {
+                    state.currentConditionTimestamp = Date.now();
+                }
                 startTimer();
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
@@ -1201,10 +1184,7 @@
                 state.currentStatus = 'stopped';
                 state.currentCondition = null; // Reset condition after stop
                 state.currentConditionId = null;
-                // Freeze timer display at 00:00 and prevent backend refresh from updating it
-                state.freezeTimer = true;
-                state.startTime = null;
-                state.conditionStartTime = null;
+                state.currentConditionTimestamp = null;
                 stopTimer();
                 updateTimingDisplay();
                 updateUI();
@@ -1689,11 +1669,19 @@
                 if (lastId) {
                     state.currentConditionId = lastId;
                     state.currentCondition = lastCondition.condition || lastId;
+                    if (lastCondition.timestamp) {
+                        const ts = Date.parse(lastCondition.timestamp);
+                        if (!Number.isNaN(ts)) state.currentConditionTimestamp = ts;
+                    }
                 } else {
                     state.currentCondition = lastCondition.condition;
                     const resolvedId = resolveConditionIdByLabel(state.currentCondition);
                     if (resolvedId) {
                         state.currentConditionId = resolvedId;
+                        if (lastCondition.timestamp) {
+                            const ts = Date.parse(lastCondition.timestamp);
+                            if (!Number.isNaN(ts)) state.currentConditionTimestamp = ts;
+                        }
                     }
                 }
             } else {
@@ -1756,18 +1744,10 @@
                 btn.dataset.conditionId = condition.id;
                 btn.dataset.conditionLabel = condition.label;
                 btn.onclick = () => selectCondition(condition.id, condition.label);
-
-                const label = document.createElement('span');
-                label.className = 'condition-btn-label';
-                label.textContent = condition.label;
-
-                const timer = document.createElement('span');
-                timer.className = 'condition-btn-timer';
-                timer.textContent = '--:--';
-                timer.style.display = 'none';
-
-                btn.appendChild(label);
-                btn.appendChild(timer);
+                btn.innerHTML = `
+                    <div class="condition-label">${condition.label}</div>
+                    <div class="condition-btn-timer" aria-hidden="true">00:00</div>
+                `;
                 elements.conditionsGrid.appendChild(btn);
             });
             updateConditionsLayout();
@@ -1799,7 +1779,12 @@
         buttons.forEach(btn => {
             const matchesLabel = btn.dataset.conditionLabel === state.currentCondition;
             const matchesId = btn.dataset.conditionId === state.currentConditionId;
-            btn.classList.toggle('selected', matchesLabel || matchesId);
+            const isSelected = matchesLabel || matchesId;
+            btn.classList.toggle('selected', isSelected);
+            const timerEl = btn.querySelector('.condition-btn-timer');
+            if (timerEl) {
+                timerEl.style.display = isSelected ? 'block' : 'none';
+            }
         });
         updateConditionModalTimers();
     }
@@ -1809,12 +1794,23 @@
         elements.conditionsModal.classList.add('open');
         // Prevent scrolling on body when modal is open
         document.body.style.overflow = 'hidden';
+        updateTimer();
+        updateConditionButtonTimers();
+        // Start updating condition button timers while modal is open
+        if (state.currentStatus === 'running' && !state.conditionTimerInterval) {
+            state.conditionTimerInterval = setInterval(updateConditionButtonTimers, 1000);
+        }
     }
     
     // Close conditions modal
     function closeConditionsModal() {
         elements.conditionsModal.classList.remove('open');
         document.body.style.overflow = '';
+        // Stop updating condition button timers
+        if (state.conditionTimerInterval) {
+            clearInterval(state.conditionTimerInterval);
+            state.conditionTimerInterval = null;
+        }
     }
     
     // Show error dialog
@@ -1850,6 +1846,8 @@
             // Update local state immediately
             state.currentCondition = conditionLabel;
             state.currentConditionId = conditionId;
+            // Start condition timing only while acquisition is active
+            state.currentConditionTimestamp = state.currentStatus === 'running' ? Date.now() : null;
             updateUI();
             updateConditionButtonSelection();
             
@@ -1867,7 +1865,8 @@
             
             if (data.status === 'success') {
                 // Show feedback but don't close modal
-                applyTimingPayload(data.timing);
+                // ensure timer display updates immediately
+                updateConditionButtonTimers();
                 showFeedback(`✓ Condition: ${conditionLabel}`, 'success');
                 // Request fresh timing immediately so UI reflects the new condition
                 try {
@@ -1882,6 +1881,28 @@
             console.error('Select condition error:', error);
             showFeedback('✗ Cannot save condition. Check connection.', 'error');
         }
+    }
+
+    function updateConditionButtonTimers() {
+        if (!elements.conditionsGrid) return;
+        const selected = elements.conditionsGrid.querySelector('.condition-btn.selected');
+        if (!selected) return;
+        const timerEl = selected.querySelector('.condition-btn-timer');
+        if (!timerEl) return;
+        if (state.currentStatus !== 'running') {
+            timerEl.textContent = '00:00';
+            return;
+        }
+        if (!state.currentConditionTimestamp) {
+            timerEl.textContent = '00:00';
+            return;
+        }
+        const elapsed = Math.floor((Date.now() - state.currentConditionTimestamp) / 1000);
+        if (elapsed < 0) {
+            timerEl.textContent = '00:00';
+            return;
+        }
+        timerEl.textContent = formatTime(elapsed);
     }
     
     // Toggle eye-tracker connection
@@ -1980,6 +2001,7 @@
     configureCalibrationPanel();
     configureStatusPanel();
     loadLastCondition();
+    syncRunningAcquisitionTimer();
     updateUI();
     console.log('🔄 Requesting health status on page load...');
     requestHealthStatus('on page load');
@@ -1989,8 +2011,6 @@
     // Load and update status state periodically
     loadAndUpdateStatusState();
     setInterval(loadAndUpdateStatusState, 3000);
-
-    refreshAcquisitionTiming();
-    setInterval(refreshAcquisitionTiming, 3000);
+    setInterval(syncRunningAcquisitionTimer, 3000);
     
 })();
