@@ -952,6 +952,13 @@
         }
     }
     
+    // Format time as MM:SS
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
     // Update timer display
     function updateTimer() {
         if (state.startTime) {
@@ -976,7 +983,6 @@
         state.startTime = Date.now();
         setTimerDisplays('00:00');
         if (state.timerInterval) clearInterval(state.timerInterval);
-        state.timerInterval = setInterval(updateTimingDisplay, 1000);
     }
     
     // Stop timer
@@ -985,7 +991,6 @@
             clearInterval(state.timerInterval);
             state.timerInterval = null;
         }
-        updateTimingDisplay(); // Final update
     }
     
     // Reset timer
@@ -1146,12 +1151,6 @@
                     elements.commentText.value = '';
                 }
                 
-                // Refresh timing from backend immediately to ensure UI sync
-                try {
-                    await refreshAcquisitionTiming();
-                } catch (e) {
-                    console.warn('Immediate timing refresh after start failed:', e);
-                }
             } else {
                 showFeedback(`⚠ ${data.message}`, 'warning');
             }
@@ -1186,7 +1185,6 @@
                 state.currentConditionId = null;
                 state.currentConditionTimestamp = null;
                 stopTimer();
-                updateTimingDisplay();
                 updateUI();
                 const num = data.acquisition_id.replace('acq_', '');
                 showFeedback(`✓ Recording stopped (#${num})`, 'success');
@@ -1227,9 +1225,6 @@
                 state.conditionStartTime = null;
             }
             updateUI();
-            if (state.currentStatus === 'running') {
-                await refreshAcquisitionTiming();
-            }
         } catch (error) {
             console.error('Check status error:', error);
             showFeedback('Cannot connect. Check if device is powered on.', 'error');
@@ -1868,12 +1863,6 @@
                 // ensure timer display updates immediately
                 updateConditionButtonTimers();
                 showFeedback(`✓ Condition: ${conditionLabel}`, 'success');
-                // Request fresh timing immediately so UI reflects the new condition
-                try {
-                    await refreshAcquisitionTiming();
-                } catch (e) {
-                    console.warn('Immediate timing refresh after condition save failed:', e);
-                }
             } else {
                 showFeedback(`⚠ ${data.message}`, 'warning');
             }

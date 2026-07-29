@@ -678,7 +678,11 @@ async def start_acquisition(test_config: dict = None):
         _clear_active_condition()
 
     # save info in a csv file for external use
-    csv_path = DATA_DIR / f"sub_{test_config.get('subject_id', 'unknown')}_session_{test_config.get('session_id', 'unknown')}_{acquisition_id}.csv"
+    if subject_id is None:
+        subject_id = 0
+    if session_id is None:
+        session_id = 0
+    csv_path = DATA_DIR / f"sub_{subject_id}_session_{session_id}_{acquisition_id}.csv"
     with open(csv_path, "w") as f:
         f.write("start_time,subject_height_cm,subject_weight_kg,crutch_height_hole\n")
         f.write(f"{acquisition_started_at.isoformat()},{test_config.get('height_cm','')},{test_config.get('weight_kg','')},{test_config.get('crutch_height','')}\n")
