@@ -13,9 +13,6 @@ sys.path.append(os.path.join(mads_path, 'python'))
 
 from mads_agent import Agent, MessageType
 
-
-from pupil_labs.realtime_api.models import InvalidTemplateAnswersError, TemplateItem
-
 try:
     from pupil_labs.realtime_api.simple import discover_one_device
 except Exception:
@@ -51,6 +48,11 @@ class PupilNeonAgent:
         # Health check control
         self._health_thread = None
         self._stop_health = threading.Event()
+
+        # Status heartbeat control
+        self._status_thread = None
+        self._stop_status = threading.Event()
+        self._last_health_status_time = time.time()
         
         # agent status tracking
         self.agent_status = AgentStatus.STARTUP
@@ -60,6 +62,7 @@ class PupilNeonAgent:
 
         # After publishing startup status, we can set the status to IDLE to indicate we are ready for commands
         self.agent_status = AgentStatus.IDLE
+        self.start_status_loop()
         print("Pupil Neon agent started")
 
     def publish_agent_status(self, error: str or None):
@@ -85,30 +88,17 @@ class PupilNeonAgent:
             self.publish_agent_status(err)
             return False
         
-        try:
-            dev = discover_one_device(max_search_duration_seconds=5)
-        except Exception as e:
-            err = str(e)
-            self.publish_agent_status(err)
-            return False
+        dev = discover_one_device(max_search_duration_seconds=30)
 
         if dev is None:
             err = 'no device found'
+            print(err)
             self.publish_agent_status(err)
             return False
-
-        # Fetch current template definition
-        template = dev.get_template()
-        if template is None:
-            err = 'Connected to a device, but no template was found on the device'
-            self.publish_agent_status(err)
-            return False
-
+            
         self.device = dev
-        self.template = template
 
         print("Connected to Pupil Neon device:", dev)
-        print("Current device template:", template)
         self.agent_status = AgentStatus.CONNECTED
         self.publish_agent_status(None)
 
@@ -261,50 +251,39 @@ class PupilNeonAgent:
         if self._health_thread:
             self._health_thread.join(timeout=1.0)
 
+    def _status_loop(self):
+        """Continuously publish the heartbeat status."""
+        while not self._stop_status.is_set():
+            if time.time() - self._last_health_status_time > self.health_status_period / 1000.0:
+                self.publish_agent_status(None)
+                self._last_health_status_time = time.time()
+            self._stop_status.wait(0.1)
+
+    def start_status_loop(self):
+        """Start the status heartbeat loop."""
+        if self._status_thread and self._status_thread.is_alive():
+            return
+        self._stop_status.clear()
+        self._status_thread = threading.Thread(target=self._status_loop, daemon=True)
+        self._status_thread.start()
+
+    def stop_status_loop(self):
+        """Stop the status heartbeat loop."""
+        self._stop_status.set()
+        if self._status_thread:
+            self._status_thread.join(timeout=1.0)
+
 
     def run(self):
-        """Main run loop - wait for connect/disconnect commands."""
+        """Main run loop"""
 
         try:
             while True:
-                # Firtly send a heartbeat with the current status if self.health_status_period is passed
-                if time.time() - self._last_health_status_time > self.health_status_period / 1000.0:
-                    self.publish_agent_status(None)
-                    self._last_health_status_time = time.time()
-
-                msg_type = self.agent.receive()
-                if msg_type == MessageType.NONE:
-                    time.sleep(0.01)
-                    continue
-
-                topic, message = self.agent.last_message()
-                
-                if not isinstance(message, dict):
-                    continue
-
-                cmd = message.get('command')
-                if not cmd:
-                    continue
-
-                cmd = str(cmd).lower()
-
-                # we reach here if we have a valid command message
-                # now the agent should react to the command accordinding to its current state and the command type
-
                 match self.agent_status:
                     case AgentStatus.IDLE | AgentStatus.STARTUP:
-                        # ignore all commands except connect
-                        if cmd == 'pupil_neon_connect':
-                            print("Received connect command")
-                            if self.connect_device():
-                                self.start_health_loop()
-
-                    case AgentStatus.CONNECTED:
-                        # ignore all commands except disconnect andstart
-                        if cmd == 'pupil_neon_disconnect':
-                            print("Received disconnect command")
-                            self.stop_health_loop()
-                            self.disconnect_device() 
+                        # If not connected yet, it connects to a device and start health loop
+                        if self.connect_device():
+                            self.start_health_loop()
 
         except KeyboardInterrupt:
             pass
@@ -331,9 +310,8 @@ def main():
     finally:
         if agent:
             try:
-                agent.stop_health_loop()
-                if agent.agent_status == AgentStatus.CONNECTED:
-                    agent.disconnect_device()
+                agent.stop_status_loop()
+                agent.disconnect_device()
 
                 # Publish shutdown status BEFORE disconnecting from broker
                 agent.agent_status = AgentStatus.SHUTDOWN

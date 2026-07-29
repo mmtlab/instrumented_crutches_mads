@@ -9,6 +9,7 @@ This project implements MADS plugins for collecting and processing data from ins
 For the Instrumented Crutches documentation, visit the online [docs](https://mmtlab.github.io/instrumented_crutches_mads/index.html).
 
 *Required MADS version: [2.0.0](https://github.com/pbosetti/MADS/releases/tag/v2.0.0)*
+*Required cmake:run "sudo apt install cmake"*
 
 ## Installation
 

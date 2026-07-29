@@ -1905,33 +1905,6 @@
         timerEl.textContent = formatTime(elapsed);
     }
     
-    // Toggle eye-tracker connection
-    async function toggleEyetracker() {
-        const command = state.eyetrackerConnected ? 'pupil_neon_disconnect' : 'pupil_neon_connect';
-        
-        try {
-            const response = await fetch(`${API_BASE}/eyetracker_command`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: command })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status !== 'success') {
-                showFeedback(`⚠ ${data.message}`, 'warning');
-            }
-            // Don't update UI here - wait for backend message via setEyetrackerStatus()
-        } catch (error) {
-            console.error('Toggle eye-tracker error:', error);
-            showFeedback('✗ Cannot toggle eye-tracker. Check connection.', 'error');
-        }
-    }
-    
     // Update eye-tracker UI
     function updateEyetrackerUI() {
         if (state.eyetrackerConnected) {
@@ -1961,7 +1934,6 @@
     elements.saveCommentBtn.addEventListener('click', saveComment);
     elements.conditionBtn.addEventListener('click', openConditionsModal);
     elements.closeConditionsBtn.addEventListener('click', closeConditionsModal);
-    elements.eyetrackerBtn.addEventListener('click', toggleEyetracker);
     
     // Close modal when clicking outside the modal content
     elements.conditionsModal.addEventListener('click', (e) => {

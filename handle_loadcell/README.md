@@ -7,6 +7,7 @@ This is a Filter plugin for [MADS](https://github.com/MADS-NET/MADS).
 *Required MADS version: 2.0.0.*
 
 
+
 ## Supported platforms
 
 Currently, the supported platforms are:
