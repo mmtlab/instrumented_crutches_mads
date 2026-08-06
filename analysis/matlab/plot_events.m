@@ -7,8 +7,12 @@ function [] = plot_events(events, offset, colors, lower_line, upper_line, text_l
         label = events{e,"label"};
         labelFormatted = strrep(label,"_", " ");
     
-        if label == "recording" || startsWith(label,"sync_")
+        if label == "recording"
             continue
+        end
+
+        if startsWith(label,"sync_")
+            label = "sync";
         end
     
         vertices = [start_time lower_line; end_time lower_line; end_time upper_line; start_time upper_line];
